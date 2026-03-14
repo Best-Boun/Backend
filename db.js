@@ -1,10 +1,11 @@
 const mysql = require("mysql2");
 
 const db = mysql.createConnection({
-  host: "localhost",
+  host: "crossover.proxy.rlwy.net",
   user: "root",
-  password: "1234",
-  database: "smart_persona",
+  password: "gemIHMHZTLKxUQjYIJfaDWTnuMSQPKoY",
+  database: "railway",
+  port: 49988,
 });
 
 db.connect((err) => {
@@ -12,7 +13,7 @@ db.connect((err) => {
     console.error("Database connection failed:", err);
     return;
   }
-  console.log("Connected to MySQL");
+  console.log("Connected to Railway MySQL");
 });
 
 module.exports = db;
