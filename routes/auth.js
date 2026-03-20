@@ -8,21 +8,26 @@ const jwt = require("jsonwebtoken");
 // REGISTER
 // =======================
 router.post("/register", async (req, res) => {
-  const { name, email, password } = req.body;
+  const { name, email, password, role } = req.body;
+
+  const VALID_ROLES = ["seeker", "employer"];
+  const userRole = role || "seeker";
+
+  if (!VALID_ROLES.includes(userRole)) {
+    return res.status(400).json({ message: "role must be 'seeker' or 'employer'" });
+  }
 
   try {
     const hash = await bcrypt.hash(password, 10);
 
-    const sql = "INSERT INTO users (name,email,password) VALUES (?,?,?)";
+    const sql = "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)";
 
-    db.query(sql, [name, email, hash], (err, result) => {
+    db.query(sql, [name, email, hash, userRole], (err) => {
       if (err) {
         return res.status(500).json(err);
       }
 
-      res.json({
-        message: "User registered",
-      });
+      res.json({ message: "User registered" });
     });
   } catch (err) {
     res.status(500).json(err);
@@ -56,12 +61,14 @@ router.post("/login", (req, res) => {
       });
     }
 
-    // 🔑 สร้าง JWT Token
-    const token = jwt.sign({ id: user.id }, "mysecretkey", { expiresIn: "1d" });
+    const token = jwt.sign({ id: user.id, role: user.role }, "mysecretkey", { expiresIn: "1d" });
 
     res.json({
       message: "Login success",
-      token: token,
+      token,
+      userId: user.id,
+      role: user.role,
+      name: user.name,
       user: {
         id: user.id,
         name: user.name,
