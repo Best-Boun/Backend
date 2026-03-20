@@ -57,7 +57,9 @@ router.post("/login", (req, res) => {
     }
 
     // 🔑 สร้าง JWT Token
-    const token = jwt.sign({ id: user.id }, "mysecretkey", { expiresIn: "1d" });
+    const token = jwt.sign({ id: user.id, role: user.role }, "mysecretkey", {
+      expiresIn: "1d",
+    });
 
     res.json({
       message: "Login success",
