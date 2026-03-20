@@ -61,7 +61,10 @@ router.post("/login", (req, res) => {
       });
     }
 
-    const token = jwt.sign({ id: user.id, role: user.role }, "mysecretkey", { expiresIn: "1d" });
+    // 🔑 สร้าง JWT Token
+    const token = jwt.sign({ id: user.id, role: user.role }, "mysecretkey", {
+      expiresIn: "1d",
+    });
 
     res.json({
       message: "Login success",

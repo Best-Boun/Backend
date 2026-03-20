@@ -2,6 +2,8 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
+const verifyToken = require("../middleware/authMiddleware");
+
 // ==========================
 // GET POSTS
 // ==========================
@@ -25,8 +27,9 @@ ORDER BY posts.createdAt DESC
 // ==========================
 // CREATE POST
 // ==========================
-router.post("/", (req, res) => {
-  const { userId, text } = req.body;
+router.post("/", verifyToken, (req, res) => {
+  const userId = req.user.id;
+  const { text } = req.body;
 
   const sql = `
   INSERT INTO posts (userId, text)
@@ -47,12 +50,13 @@ router.post("/", (req, res) => {
 // ==========================
 // DELETE POST
 // ==========================
-router.delete("/:id", (req, res) => {
+router.delete("/:id", verifyToken, (req, res) => {
   const postId = req.params.id;
+  const userId = req.user.id;
 
-  const sql = "DELETE FROM posts WHERE id = ?";
+  const sql = "DELETE FROM posts WHERE id = ? AND userId = ?";
 
-  db.query(sql, [postId], (err, result) => {
+  db.query(sql, [postId, userId], (err, result) => {
     if (err) {
       return res.status(500).json(err);
     }
