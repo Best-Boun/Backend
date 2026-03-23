@@ -2,14 +2,61 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// get user profile
+// get all users for admin panel (real users)
+router.get("/", (req, res) => {
+  const sql = "SELECT id, name AS username, email, role, IFNULL(isBanned, 0) AS isBanned FROM users";
+
+  db.query(sql, (err, results) => {
+    if (err) return res.status(500).json(err);
+    res.json(results);
+  });
+});
+
+// get user profile by id
 router.get("/:id", (req, res) => {
-  const sql = "SELECT id,name,email,profileImage FROM users WHERE id = ?";
+  const sql = "SELECT id, name AS username, email, role, IFNULL(isBanned, 0) AS isBanned FROM users WHERE id = ?";
 
   db.query(sql, [req.params.id], (err, result) => {
     if (err) return res.status(500).json(err);
-
+    if (!result[0]) return res.status(404).json({ message: "User not found" });
     res.json(result[0]);
+  });
+});
+
+// patch user (ban/unban, role etc.)
+router.patch("/:id", (req, res) => {
+  const { name, username, email, role, isBanned } = req.body;
+  const fields = [];
+  const values = [];
+
+  if (name !== undefined) {
+    fields.push("name = ?");
+    values.push(name);
+  }
+  if (email !== undefined) {
+    fields.push("email = ?");
+    values.push(email);
+  }
+  if (role !== undefined) {
+    fields.push("role = ?");
+    values.push(role);
+  }
+  if (isBanned !== undefined) {
+    fields.push("isBanned = ?");
+    values.push(isBanned ? 1 : 0);
+  }
+
+  if (!fields.length) {
+    return res.status(400).json({ message: "No valid fields to update" });
+  }
+
+  values.push(req.params.id);
+  const sql = `UPDATE users SET ${fields.join(", ")} WHERE id = ?`;
+
+  db.query(sql, values, (err, result) => {
+    if (err) return res.status(500).json(err);
+    if (result.affectedRows === 0) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "User updated" });
   });
 });
 
