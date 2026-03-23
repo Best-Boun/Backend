@@ -101,14 +101,14 @@ router.get('/summary', async (req, res) => {
     const totalRow = await queryAsync('SELECT COUNT(*) AS total FROM users');
     const todayRow = await queryAsync("SELECT COUNT(*) AS today FROM profiles WHERE DATE(createdAt) = CURDATE()");
     const newMonthRow = await queryAsync("SELECT COUNT(*) AS newMonth FROM profiles WHERE MONTH(createdAt) = MONTH(CURDATE()) AND YEAR(createdAt) = YEAR(CURDATE())");
-    const appRow = await queryAsync("SELECT COUNT(*) AS applications FROM job_applications WHERE appliedAt >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)");
+    
 
     const total = totalRow[0]?.total || 0;
     const today = todayRow[0]?.today || 0;
     const newMonth = newMonthRow[0]?.newMonth || 0;
-    const avgUsage = Math.round((appRow[0]?.applications || 0) / 30);
+    
 
-    res.json({ totalUsers: total, todayUsers: today, averageUsageMins: avgUsage, newUsersMonth: newMonth });
+    res.json({ totalUsers: total, todayUsers: today,newUsersMonth: newMonth });
   } catch (err) {
     console.error('DASHBOARD SUMMARY ERROR:', err);
     res.status(500).json({ error: 'Failed to fetch dashboard summary' });
