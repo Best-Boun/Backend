@@ -96,6 +96,7 @@ router.get('/activities/recent', async (req, res) => {
 });
 
 // Summary for cards
+
 router.get('/summary', async (req, res) => {
   try {
     const totalRow = await queryAsync('SELECT COUNT(*) AS total FROM users');
@@ -116,3 +117,137 @@ router.get('/summary', async (req, res) => {
 });
 
 module.exports = router;
+
+
+/**
+ * @swagger
+ * tags:
+ *   name: Dashboard
+ *   description: ข้อมูล Dashboard สำหรับ Admin
+ */
+
+/**
+ * @swagger
+ * /api/dashboard/summary:
+ *   get:
+ *     summary: ดึงข้อมูลสรุป Dashboard
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 totalUsers:
+ *                   type: integer
+ *                   example: 14
+ *                 todayUsers:
+ *                   type: integer
+ *                   example: 2
+ *                 newUsersMonth:
+ *                   type: integer
+ *                   example: 5
+ */
+
+/**
+ * @swagger
+ * /api/dashboard/users/monthly:
+ *   get:
+ *     summary: ดึงข้อมูล Users รายเดือน
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 labels:
+ *                   type: array
+ *                   example: ["2024-01", "2024-02"]
+ *                 data:
+ *                   type: array
+ *                   example: [5, 8]
+ */
+
+/**
+ * @swagger
+ * /api/dashboard/users/total:
+ *   get:
+ *     summary: ดึงข้อมูล Users ทั้งหมด
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 current:
+ *                   type: integer
+ *                   example: 14
+ *                 new:
+ *                   type: integer
+ *                   example: 12
+ *                 thisMonth:
+ *                   type: integer
+ *                   example: 3
+ */
+
+/**
+ * @swagger
+ * /api/dashboard/users/active-today:
+ *   get:
+ *     summary: ดึงจำนวน Users ที่ active วันนี้
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 activeToday:
+ *                   type: integer
+ *                   example: 3
+ */
+
+/**
+ * @swagger
+ * /api/dashboard/jobs/top:
+ *   get:
+ *     summary: ดึง Top 5 งานยอดนิยม
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   title:
+ *                     type: string
+ *                   company:
+ *                     type: string
+ *                   applications:
+ *                     type: integer
+ */
+
+/**
+ * @swagger
+ * /api/dashboard/activities/recent:
+ *   get:
+ *     summary: ดึงกิจกรรมล่าสุด 7 รายการ
+ *     tags: [Dashboard]
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ */

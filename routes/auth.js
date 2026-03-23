@@ -7,6 +7,39 @@ const jwt = require("jsonwebtoken");
 // =======================
 // REGISTER
 // =======================
+/**
+ * @swagger
+ * /api/auth/register:
+ *   post:
+ *     summary: สมัครสมาชิก
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [name, email, password]
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: John Doe
+ *               email:
+ *                 type: string
+ *                 example: john@gmail.com
+ *               password:
+ *                 type: string
+ *                 example: "123456"
+ *               role:
+ *                 type: string
+ *                 enum: [seeker, employer]
+ *                 example: seeker
+ *     responses:
+ *       200:
+ *         description: สมัครสมาชิกสำเร็จ
+ *       500:
+ *         description: Database error
+ */
 router.post("/register", async (req, res) => {
   const { name, email, password, role } = req.body;
 
@@ -37,6 +70,29 @@ router.post("/register", async (req, res) => {
 // =======================
 // LOGIN
 // =======================
+/**
+ * @swagger
+ * /api/auth/login:
+ *   post:
+ *     summary: Login
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 example: admin@test.com
+ *               password:
+ *                 type: string
+ *                 example: 123456
+ *     responses:
+ *       200:
+ *         description: Login สำเร็จ ได้รับ Token
+ */
 router.post("/login", (req, res) => {
   const { email, password } = req.body;
 

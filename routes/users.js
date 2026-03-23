@@ -3,6 +3,33 @@ const router = express.Router();
 const db = require("../db");
 
 // get all users for admin panel (real users)
+/**
+ * @swagger
+ * /api/users:
+ *   get:
+ *     summary: ดึงรายชื่อผู้ใช้ทั้งหมด
+ *     tags: [Users]
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                   username:
+ *                     type: string
+ *                   email:
+ *                     type: string
+ *                   role:
+ *                     type: string
+ *                   isBanned:
+ *                     type: integer
+ */
 router.get("/", (req, res) => {
   const sql = "SELECT id, name AS username, email, role, IFNULL(isBanned, 0) AS isBanned FROM users";
 
@@ -13,6 +40,50 @@ router.get("/", (req, res) => {
 });
 
 // get user profile by id
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   get:
+ *     summary: ดึงข้อมูลผู้ใช้ตาม ID
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 1
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *       404:
+ *         description: ไม่พบผู้ใช้
+ *   patch:
+ *     summary: แก้ไขข้อมูลผู้ใช้
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               role:
+ *                 type: string
+ *                 enum: [seeker, employer, admin]
+ *               isBanned:
+ *                 type: boolean
+ *     responses:
+ *       200:
+ *         description: อัปเดตสำเร็จ
+ *       404:
+ *         description: ไม่พบผู้ใช้
+ */
 router.get("/:id", (req, res) => {
   const sql = "SELECT id, name AS username, email, role, IFNULL(isBanned, 0) AS isBanned FROM users WHERE id = ?";
 

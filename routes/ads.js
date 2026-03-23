@@ -186,3 +186,110 @@ router.delete("/:id", verifyToken, (req, res) => {
 });
 
 module.exports = router;
+
+
+
+/**
+ * @swagger
+ * tags:
+ *   name: Ads
+ *   description: จัดการโฆษณา
+ */
+
+/**
+ * @swagger
+ * /api/ads:
+ *   get:
+ *     summary: ดึงโฆษณาทั้งหมด
+ *     tags: [Ads]
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *   post:
+ *     summary: สร้างโฆษณาใหม่
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: New Ad
+ *               description:
+ *                 type: string
+ *               active:
+ *                 type: integer
+ *                 enum: [0, 1]
+ *     responses:
+ *       200:
+ *         description: สร้างสำเร็จ
+ */
+
+/**
+ * @swagger
+ * /api/ads/{id}:
+ *   put:
+ *     summary: แก้ไขโฆษณา
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               active:
+ *                 type: integer
+ *     responses:
+ *       200:
+ *         description: อัปเดตสำเร็จ
+ *   delete:
+ *     summary: ลบโฆษณา
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: ลบสำเร็จ
+ */
+
+/**
+ * @swagger
+ * /api/ads/upload:
+ *   post:
+ *     summary: อัปโหลดรูปภาพโฆษณา
+ *     tags: [Ads]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               image:
+ *                 type: string
+ *                 format: binary
+ *     responses:
+ *       200:
+ *         description: อัปโหลดสำเร็จ
+ */

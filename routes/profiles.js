@@ -337,3 +337,97 @@ router.get("/users/:userId/profile", (req, res) => {
 });
 
 module.exports = router;
+
+/**
+ * @swagger
+ * tags:
+ *   name: Profiles
+ *   description: จัดการข้อมูล Profile
+ */
+
+/**
+ * @swagger
+ * /api/profiles:
+ *   get:
+ *     summary: ดึง Profile ตาม userId
+ *     tags: [Profiles]
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         example: 1
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *       400:
+ *         description: ไม่ได้ส่ง userId
+ *   post:
+ *     summary: สร้าง Profile ใหม่
+ *     tags: [Profiles]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [userId]
+ *             properties:
+ *               userId:
+ *                 type: integer
+ *               name:
+ *                 type: string
+ *               title:
+ *                 type: string
+ *               bio:
+ *                 type: string
+ *               skills:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               experience:
+ *                 type: array
+ *               education:
+ *                 type: array
+ *     responses:
+ *       200:
+ *         description: สร้างสำเร็จ
+ */
+
+/**
+ * @swagger
+ * /api/profiles/{userId}:
+ *   put:
+ *     summary: อัปเดต Profile
+ *     tags: [Profiles]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *               title:
+ *                 type: string
+ *               bio:
+ *                 type: string
+ *               phone:
+ *                 type: string
+ *               location:
+ *                 type: string
+ *               skills:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: อัปเดตสำเร็จ
+ */
