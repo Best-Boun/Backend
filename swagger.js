@@ -13,6 +13,14 @@ const options = {
         url: "http://localhost:3000",
       },
     ],
+
+    // 🔥 เพิ่มตรงนี้
+    security: [
+      {
+        bearerAuth: [],
+      },
+    ],
+
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -23,7 +31,7 @@ const options = {
       },
     },
   },
-  apis: ["./routes/*.js"], // อ่าน comment จากทุก route
+  apis: ["./routes/*.js"],
 };
 
 module.exports = swaggerJsdoc(options);

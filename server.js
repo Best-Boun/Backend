@@ -4,14 +4,11 @@ const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
-const swaggerUi = require("swagger-ui-express");
-const swaggerSpec = require("./swagger");
 
 const app = express();
 
 app.use(cors());
 app.use(express.json());
-app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Multer setup
 const storage = multer.diskStorage({
@@ -37,18 +34,35 @@ app.use("/api/posts", require("./routes/posts"));
 app.use("/api/ads", require("./routes/ads"));
 app.use("/api/jobs", require("./routes/jobs"));
 app.use("/api/profiles", require("./routes/profiles"));
-app.use("/api", require("./routes/profiles"));
-app.use("/api/dashboard", require("./routes/dashboard"));
 app.use("/upload", express.static("upload"));
+
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./swagger");
+
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  }),
+);
+
 
 // File upload endpoint
 app.post("/api/upload", upload.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  res.json({ url: `/upload/${req.file.filename}` });
+ res.json({
+   imageUrl: `/upload/${req.file.filename}`,
+ });
 });
 
 app.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError || err.message === "Only image files are allowed")
+  if (
+    err instanceof multer.MulterError ||
+    err.message === "Only image files are allowed"
+  )
     return res.status(400).json({ error: err.message });
   next(err);
 });

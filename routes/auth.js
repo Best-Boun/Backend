@@ -47,21 +47,47 @@ router.post("/register", async (req, res) => {
   const userRole = role || "seeker";
 
   if (!VALID_ROLES.includes(userRole)) {
-    return res.status(400).json({ message: "role must be 'seeker' or 'employer'" });
+    return res
+      .status(400)
+      .json({ message: "role must be 'seeker' or 'employer'" });
   }
 
   try {
-    const hash = await bcrypt.hash(password, 10);
+    // ✅ 🔥 เช็ค email ซ้ำก่อน
+    db.query(
+      "SELECT * FROM users WHERE email = ?",
+      [email],
+      async (err, result) => {
+        if (err) return res.status(500).json(err);
 
-    const sql = "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)";
+        if (result.length > 0) {
+          return res.status(400).json({
+            message: "Email already exists",
+          });
+        }
 
-    db.query(sql, [name, email, hash, userRole], (err) => {
-      if (err) {
-        return res.status(500).json(err);
-      }
+        // 👉 ค่อย hash หลังจากเช็คแล้ว
+        const hash = await bcrypt.hash(password, 10);
 
-      res.json({ message: "User registered" });
-    });
+        const sql =
+          "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)";
+
+       db.query(sql, [name, email, hash, userRole], (err) => {
+         if (err) {
+           // 🔥 handle email ซ้ำ
+           if (err.code === "ER_DUP_ENTRY") {
+             return res.status(409).json({
+               message: "Email already exists",
+             });
+           }
+
+           return res.status(500).json(err);
+         }
+
+         res.json({ message: "User registered" });
+       });
+      },
+    );
   } catch (err) {
     res.status(500).json(err);
   }
@@ -85,10 +111,10 @@ router.post("/register", async (req, res) => {
  *             properties:
  *               email:
  *                 type: string
- *                 example: admin@test.com
+ *                 example: admin@gmail.com
  *               password:
  *                 type: string
- *                 example: 123456
+ *                 example: 1
  *     responses:
  *       200:
  *         description: Login สำเร็จ ได้รับ Token

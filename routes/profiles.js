@@ -82,7 +82,6 @@ function buildProfileObject(profile, subs, email) {
       url: r.url,
     })),
     projects: (subs["profile_projects"] || []).map((r) => ({
-      name: r.name,
       image: r.image,
       description: r.description,
       url: r.url,
@@ -169,7 +168,7 @@ function insertSubTables(userId, body, callback) {
       table: "profile_projects",
       row: {
         userId,
-        name: proj.name || null,
+
         image: proj.image || null,
         description: proj.description || null,
         url: proj.url || null,
