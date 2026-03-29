@@ -98,7 +98,7 @@ router.get("/:id", (req, res) => {
  * @swagger
  * /api/users/{id}:
  *   put:
- *     summary: แก้ไขข้อมูลผู้ใช้ (แก้หลาย field ได้)
+ *     summary: แก้ไขข้อมูลผู้ใช้ (username, email, role, isBanned)
  *     tags: [Users]
  *     security:
  *       - bearerAuth: []
@@ -108,6 +108,7 @@ router.get("/:id", (req, res) => {
  *         required: true
  *         schema:
  *           type: integer
+ *         description: ID ของผู้ใช้ที่ต้องการแก้ไข
  *     requestBody:
  *       required: true
  *       content:
@@ -123,11 +124,36 @@ router.get("/:id", (req, res) => {
  *                 example: "new@gmail.com"
  *               role:
  *                 type: string
- *                 example: "admin"
- *               
+ *                 enum: [user, admin]
+ *                 example: "user"
+ *               isBanned:
+ *                 type: boolean
+ *                 description: true = แบนผู้ใช้, false = ปลดแบน
+ *                 example: true
  *     responses:
  *       200:
- *         description: User updated
+ *         description: อัปเดตสำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: User updated successfully
+ *                 updatedFields:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["isBanned = ?"]
+ *       400:
+ *         description: ไม่มีข้อมูลที่ต้องการอัปเดต
+ *       401:
+ *         description: ไม่มี Token
+ *       403:
+ *         description: ไม่ใช่ Admin
+ *       404:
+ *         description: ไม่พบผู้ใช้
  */
 router.put("/:id", verifyToken, isAdmin, (req, res) => {
   const { username, email, role, isBanned } = req.body;
@@ -175,6 +201,56 @@ router.put("/:id", verifyToken, isAdmin, (req, res) => {
       message: "User updated successfully",
       updatedFields: fields,
     });
+  });
+});
+
+// ==========================
+// DELETE USER
+// ==========================
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   delete:
+ *     summary: ลบผู้ใช้ตาม ID (Admin เท่านั้น)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID ของผู้ใช้ที่ต้องการลบ
+ *     responses:
+ *       200:
+ *         description: ลบสำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: User deleted successfully
+ *       401:
+ *         description: ไม่มี Token
+ *       403:
+ *         description: ไม่ใช่ Admin
+ *       404:
+ *         description: ไม่พบผู้ใช้
+ */
+router.delete("/:id", verifyToken, isAdmin, (req, res) => {
+  const sql = "DELETE FROM users WHERE id = ?";
+
+  db.query(sql, [req.params.id], (err, result) => {
+    if (err) return res.status(500).json(err);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ message: "User deleted successfully" });
   });
 });
 
