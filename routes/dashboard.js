@@ -48,6 +48,17 @@ router.get('/users/total', async (req, res) => {
   }
 });
 
+// Users grouped by role
+router.get('/users/by-role', async (req, res) => {
+  try {
+    const rows = await queryAsync('SELECT role, COUNT(*) AS count FROM users GROUP BY role ORDER BY role');
+    res.json(rows);
+  } catch (err) {
+    console.error('DASHBOARD USERS BY ROLE ERROR:', err);
+    res.status(500).json({ error: 'Failed to fetch users by role' });
+  }
+});
+
 // Active users today (distinct applicants)
 router.get('/users/active-today', async (req, res) => {
   try {
