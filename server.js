@@ -33,8 +33,10 @@ app.use("/api/users", require("./routes/users"));
 app.use("/api/posts", require("./routes/posts"));
 app.use("/api/ads", require("./routes/ads"));
 app.use("/api/jobs", require("./routes/jobs"));
+app.use("/api/favorites", require("./routes/favorites"));
+app.use("/api/companies", require("./routes/companies"));
+app.use("/api/skills", require("./routes/skills"));
 app.use("/api/profiles", require("./routes/profiles"));
-app.use("/api", require("./routes/profiles"));
 app.use("/upload", express.static("upload"));
 
 // File upload endpoint
