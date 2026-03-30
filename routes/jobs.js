@@ -6,6 +6,7 @@ const verifyToken = require('../middleware/authMiddleware');
 // ==========================
 // GET ALL JOBS (with filters)
 // ==========================
+
 router.get("/", (req, res) => {
   const { search, location, type, level, active } = req.query;
 
@@ -616,3 +617,250 @@ function parseJSON(value) {
 }
 
 module.exports = router;
+
+
+
+
+
+
+/**
+ * @swagger
+ * tags:
+ *   name: Jobs
+ *   description: จัดการข้อมูลงาน
+ */
+
+/**
+ * @swagger
+ * /api/jobs:
+ *   get:
+ *     summary: ดึงงานทั้งหมด
+ *     tags: [Jobs]
+ *     parameters:
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         example: Developer
+ *       - in: query
+ *         name: location
+ *         schema:
+ *           type: string
+ *         example: Bangkok
+ *       - in: query
+ *         name: type
+ *         schema:
+ *           type: string
+ *         example: Full-time
+ *       - in: query
+ *         name: level
+ *         schema:
+ *           type: string
+ *         example: Mid-level
+ *       - in: query
+ *         name: active
+ *         schema:
+ *           type: integer
+ *         example: 1
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *   post:
+ *     summary: สร้างงานใหม่
+ *     tags: [Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [title, company, location, salary]
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 example: Frontend Developer
+ *               company:
+ *                 type: string
+ *                 example: Tech Co
+ *               logo:
+ *                 type: string
+ *                 example: 💼
+ *               location:
+ *                 type: string
+ *                 example: Bangkok
+ *               type:
+ *                 type: string
+ *                 example: Full-time
+ *               level:
+ *                 type: string
+ *                 example: Mid-level
+ *               salary:
+ *                 type: string
+ *                 example: 50k-80k
+ *               description:
+ *                 type: string
+ *               requirements:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               benefits:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *     responses:
+ *       200:
+ *         description: สร้างงานสำเร็จ
+ *       400:
+ *         description: ข้อมูลไม่ครบ
+ */
+
+/**
+ * @swagger
+ * /api/jobs/{id}:
+ *   get:
+ *     summary: ดึงงานตาม ID
+ *     tags: [Jobs]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ *       404:
+ *         description: ไม่พบงาน
+ *   put:
+ *     summary: แก้ไขงาน
+ *     tags: [Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               active:
+ *                 type: integer
+ *                 enum: [0, 1]
+ *     responses:
+ *       200:
+ *         description: อัปเดตสำเร็จ
+ *   delete:
+ *     summary: ลบงาน
+ *     tags: [Jobs]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: ลบสำเร็จ
+ */
+
+/**
+ * @swagger
+ * /api/jobs/{id}/apply:
+ *   post:
+ *     summary: สมัครงาน
+ *     tags: [Jobs]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               userId:
+ *                 type: integer
+ *                 example: 1
+ *     responses:
+ *       200:
+ *         description: สมัครสำเร็จ
+ *       409:
+ *         description: สมัครไปแล้ว
+ */
+
+/**
+ * @swagger
+ * /api/jobs/applications/{userId}:
+ *   get:
+ *     summary: ดึงงานที่ user สมัครทั้งหมด
+ *     tags: [Jobs]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ */
+
+/**
+ * @swagger
+ * /api/jobs/applications/{appId}/status:
+ *   patch:
+ *     summary: อัปเดตสถานะการสมัคร
+ *     tags: [Jobs]
+ *     parameters:
+ *       - in: path
+ *         name: appId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               status:
+ *                 type: string
+ *                 enum: [Applied, Interview, Offer, Rejected]
+ *     responses:
+ *       200:
+ *         description: อัปเดตสำเร็จ
+ *       400:
+ *         description: status ไม่ถูกต้อง
+ */
+
+/**
+ * @swagger
+ * /api/jobs/{jobId}/applicants:
+ *   get:
+ *     summary: ดึงรายชื่อผู้สมัครของงาน
+ *     tags: [Jobs]
+ *     parameters:
+ *       - in: path
+ *         name: jobId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: สำเร็จ
+ */

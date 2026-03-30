@@ -2,12 +2,59 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// get user profile
-router.get("/:id", (req, res) => {
-  const sql = "SELECT id,name,email,profileImage FROM users WHERE id = ?";
+const verifyToken = require("../middleware/authMiddleware");
+const isAdmin = require("../middleware/isAdmin");
 
-  db.query(sql, [req.params.id], (err, result) => {
+// ==========================
+// GET ALL USERS
+// ==========================
+/**
+ * @swagger
+ * /api/users:
+ *   get:
+ *     summary: ดึงรายชื่อผู้ใช้ทั้งหมด
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: success
+ */
+router.get("/", verifyToken, isAdmin, (req, res) => {
+  const sql =
+    "SELECT id, name AS username, email, role, IFNULL(isBanned, 0) AS isBanned FROM users";
+
+  db.query(sql, (err, results) => {
     if (err) return res.status(500).json(err);
+    res.json(results);
+  });
+});
+
+// ==========================
+// GET CURRENT USER
+// ==========================
+/**
+ * @swagger
+ * /api/users/me:
+ *   get:
+ *     summary: ดึงข้อมูลผู้ใช้ที่ login อยู่
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: success
+ */
+router.get("/me", verifyToken, (req, res) => {
+  const sql = `
+    SELECT id, name AS username, email, role, profileImage
+    FROM users
+    WHERE id = ?
+  `;
+
+  db.query(sql, [req.user.id], (err, result) => {
+    if (err) return res.status(500).json(err);
+    if (!result[0]) return res.status(404).json({ message: "User not found" });
 
     res.json(result[0]);
   });

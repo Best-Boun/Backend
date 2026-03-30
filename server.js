@@ -38,15 +38,36 @@ app.use("/api/companies", require("./routes/companies"));
 app.use("/api/skills", require("./routes/skills"));
 app.use("/api/profiles", require("./routes/profiles"));
 app.use("/upload", express.static("upload"));
+app.use("/api/dashboard", require("./routes/dashboard"));
+
+
+const swaggerUi = require("swagger-ui-express");
+const swaggerSpec = require("./swagger");
+
+app.use(
+  "/api-docs",
+  swaggerUi.serve,
+  swaggerUi.setup(swaggerSpec, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+  }),
+);
+
 
 // File upload endpoint
 app.post("/api/upload", upload.single("image"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-  res.json({ url: `/upload/${req.file.filename}` });
+ res.json({
+   imageUrl: `/upload/${req.file.filename}`,
+ });
 });
 
 app.use((err, req, res, next) => {
-  if (err instanceof multer.MulterError || err.message === "Only image files are allowed")
+  if (
+    err instanceof multer.MulterError ||
+    err.message === "Only image files are allowed"
+  )
     return res.status(400).json({ error: err.message });
   next(err);
 });
