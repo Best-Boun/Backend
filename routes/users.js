@@ -166,6 +166,182 @@ function buildProfileObject(profile, subs, email) {
   };
 }
 
+// ==========================
+// PUT /api/users/:id  (admin update role/ban)
+// ==========================
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   put:
+ *     summary: อัปเดต role หรือสถานะ ban ของผู้ใช้ (Admin เท่านั้น)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID ของผู้ใช้
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               role:
+ *                 type: string
+ *                 enum: [user, employer, admin]
+ *                 example: employer
+ *               isBanned:
+ *                 type: boolean
+ *                 example: true
+ *     responses:
+ *       200:
+ *         description: อัปเดตสำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Updated
+ *       400:
+ *         description: ไม่มี field ที่จะอัปเดต
+ *       404:
+ *         description: ไม่พบผู้ใช้
+ *       403:
+ *         description: Admin เท่านั้น
+ */
+router.put('/:id', verifyToken, isAdmin, (req, res) => {
+  const { id } = req.params;
+  const { role, isBanned } = req.body;
+  const fields = [];
+  const values = [];
+  if (role !== undefined) { fields.push('role = ?'); values.push(role); }
+  if (isBanned !== undefined) { fields.push('isBanned = ?'); values.push(isBanned ? 1 : 0); }
+  if (fields.length === 0) return res.status(400).json({ message: 'No fields to update' });
+  values.push(id);
+  db.query(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values, (err, result) => {
+    if (err) return res.status(500).json(err);
+    if (result.affectedRows === 0) return res.status(404).json({ message: 'User not found' });
+    res.json({ message: 'Updated' });
+  });
+});
+
+// ==========================
+// DELETE /api/users/:id  (admin delete)
+// ==========================
+/**
+ * @swagger
+ * /api/users/{id}:
+ *   delete:
+ *     summary: ลบผู้ใช้ (Admin เท่านั้น)
+ *     tags: [Users]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID ของผู้ใช้
+ *     responses:
+ *       200:
+ *         description: ลบสำเร็จ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Deleted
+ *       404:
+ *         description: ไม่พบผู้ใช้
+ *       403:
+ *         description: Admin เท่านั้น
+ */
+router.delete('/:id', verifyToken, isAdmin, (req, res) => {
+  const { id } = req.params;
+
+  const dependentTables = [
+    'profile_skills', 'profile_experience', 'profile_education',
+    'profile_languages', 'profile_certifications', 'profile_projects',
+    'profiles', 'likes', 'job_applications', 'posts', 'jobs', 'company_profiles'
+  ];
+
+  // ลบ dependent records ทีละตาราง แล้วค่อยลบ user
+  let idx = 0;
+  const deleteNext = () => {
+    if (idx >= dependentTables.length) {
+      db.query('DELETE FROM users WHERE id = ?', [id], (err, result) => {
+        if (err) return res.status(500).json({ message: 'Delete user failed', error: err.message });
+        if (result.affectedRows === 0) return res.status(404).json({ message: 'User not found' });
+        return res.json({ message: 'Deleted' });
+      });
+      return;
+    }
+    const table = dependentTables[idx++];
+    db.query(`DELETE FROM ${table} WHERE userId = ?`, [id], (err) => {
+      if (err) return res.status(500).json({ message: `Delete from ${table} failed`, error: err.message });
+      deleteNext();
+    });
+  };
+
+  deleteNext();
+});
+
+/**
+ * @swagger
+ * /api/users/{userId}/profile:
+ *   get:
+ *     summary: ดึงข้อมูล profile สาธารณะของผู้ใช้
+ *     tags: [Users]
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: ID ของผู้ใช้
+ *     responses:
+ *       200:
+ *         description: ข้อมูล profile ของผู้ใช้
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 userId:
+ *                   type: integer
+ *                 name:
+ *                   type: string
+ *                 email:
+ *                   type: string
+ *                 title:
+ *                   type: string
+ *                 bio:
+ *                   type: string
+ *                 skills:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 experience:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 education:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       500:
+ *         description: Database error
+ */
 // GET /api/users/:userId/profile
 router.get('/:userId/profile', (req, res) => {
   const { userId } = req.params;

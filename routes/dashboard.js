@@ -115,8 +115,8 @@ router.get('/activities/recent', async (req, res) => {
 router.get('/summary', async (req, res) => {
   try {
     const totalRow    = await queryAsync("SELECT COUNT(*) AS total FROM users WHERE role != 'admin'");
-    const todayRow    = await queryAsync(`SELECT COUNT(*) AS today FROM profiles p JOIN users u ON p.userId = u.id WHERE u.role != 'admin' AND DATE(p.createdAt) = CURDATE()`);
-    const newMonthRow = await queryAsync(`SELECT COUNT(*) AS newMonth FROM profiles p JOIN users u ON p.userId = u.id WHERE u.role != 'admin' AND MONTH(p.createdAt) = MONTH(CURDATE()) AND YEAR(p.createdAt) = YEAR(CURDATE())`);
+    const todayRow    = await queryAsync("SELECT COUNT(*) AS today FROM users WHERE role != 'admin' AND DATE(lastLoginAt) = CURDATE()");
+    const newMonthRow = await queryAsync("SELECT COUNT(*) AS newMonth FROM users WHERE role != 'admin' AND MONTH(createdAt) = MONTH(CURDATE()) AND YEAR(createdAt) = YEAR(CURDATE())");
 
     const total    = totalRow[0]?.total    || 0;
     const today    = todayRow[0]?.today    || 0;

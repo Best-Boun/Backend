@@ -208,6 +208,9 @@ router.post("/login", (req, res) => {
       expiresIn: "1d",
     });
 
+    // บันทึกเวลา login ล่าสุด
+    db.query("UPDATE users SET lastLoginAt = NOW() WHERE id = ?", [user.id]);
+
     res.json({
       message: "Login success",
       token,
