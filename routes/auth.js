@@ -108,16 +108,68 @@ router.post("/register", async (req, res) => {
  *         application/json:
  *           schema:
  *             type: object
+ *             required: [email, password]
  *             properties:
  *               email:
  *                 type: string
  *                 example: admin@gmail.com
  *               password:
  *                 type: string
- *                 example: 1
+ *                 example: "123456"
  *     responses:
  *       200:
- *         description: Login สำเร็จ ได้รับ Token
+ *         description: Login สำเร็จ ได้รับ JWT Token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Login success
+ *                 token:
+ *                   type: string
+ *                   example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+ *                 userId:
+ *                   type: integer
+ *                   example: 1
+ *                 role:
+ *                   type: string
+ *                   example: admin
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     name:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *       400:
+ *         description: User not found หรือ Wrong password
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Wrong password
+ *       403:
+ *         description: บัญชีถูกแบน ไม่สามารถเข้าสู่ระบบได้
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Your account has been banned. Please contact the administrator.
+ *                 banned:
+ *                   type: boolean
+ *                   example: true
  */
 router.post("/login", (req, res) => {
   const { email, password } = req.body;
@@ -135,6 +187,14 @@ router.post("/login", (req, res) => {
 
     const user = result[0];
 
+    // 🚫 เช็คว่าถูกแบนหรือไม่
+    if (user.isBanned) {
+      return res.status(403).json({
+        message: "Your account has been banned. Please contact the administrator.",
+        banned: true,
+      });
+    }
+
     const match = await bcrypt.compare(password, user.password);
 
     if (!match) {
@@ -147,6 +207,9 @@ router.post("/login", (req, res) => {
     const token = jwt.sign({ id: user.id, role: user.role }, "mysecretkey", {
       expiresIn: "1d",
     });
+
+    // บันทึกเวลา login ล่าสุด
+    db.query("UPDATE users SET lastLoginAt = NOW() WHERE id = ?", [user.id]);
 
     res.json({
       message: "Login success",
