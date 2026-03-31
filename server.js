@@ -37,7 +37,7 @@ app.use("/api/favorites", require("./routes/favorites"));
 app.use("/api/companies", require("./routes/companies"));
 app.use("/api/skills", require("./routes/skills"));
 app.use("/api/profiles", require("./routes/profiles"));
-app.use("/upload", express.static("upload"));
+app.use("/upload", express.static(path.join(__dirname, "upload")));
 app.use("/api/likes", require("./routes/likes"));
 app.use("/api/dashboard", require("./routes/dashboard"));
 

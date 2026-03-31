@@ -379,50 +379,82 @@ router.put("/:userId", verifyToken, (req, res) => {
       });
     } else {
       // มีอยู่แล้ว → UPDATE ปกติ
-      db.query("UPDATE profiles SET ? WHERE userId = ?", [updates, userId], (err2) => {
-        if (err2) return res.status(500).json({ error: "Update failed" });
+     db.query(
+       "UPDATE profiles SET ? WHERE userId = ?",
+       [updates, userId],
+       (err2) => {
+         if (err2) return res.status(500).json({ error: "Update failed" });
 
-        // backup ข้อมูลเก่าก่อน
-        fetchSubTables(userId, (backup) => {
-          // ลบเก่า
-          deleteSubTables(userId, () => {
-            // insert ใหม่
-            upsertSkills(userId, req.body.skills || [], (skillErr) => {
-              if (skillErr) {
-                return res.status(500).json({ error: "Skills insert failed" });
-              }
-              insertSubTables(userId, { ...req.body, skills: [] }, (subErr) => {
-                if (subErr) {
-                  console.error("Insert failed, restoring backup...", subErr);
+         // 🔥 ย้ายมาไว้ตรงนี้
+         if (updates.profileImage) {
+           db.query("UPDATE users SET profileImage = ? WHERE id = ?", [
+             updates.profileImage,
+             userId,
+           ]);
+         }
 
-                  // restore — ลบที่เพิ่งใส่ผิดออก แล้ว insert backup กลับ
-                  deleteSubTables(userId, () => {
-                    const backupSkills = (backup['profile_skills'] || []).map(r => ({
-                      skillId: r.skillId,
-                      name: r.skillName || r.skill,
-                      yearsExp: r.yearsExp || 0,
-                    }));
-                    upsertSkills(userId, backupSkills, () => {
-                      insertSubTables(userId, {
-                        experience: backup['profile_experience'] || [],
-                        education: backup['profile_education'] || [],
-                        languages: backup['profile_languages'] || [],
-                        certifications: backup['profile_certifications'] || [],
-                        projects: backup['profile_projects'] || [],
-                      }, (restoreErr) => {
-                        if (restoreErr) console.error("Restore also failed:", restoreErr);
-                        return res.status(500).json({ error: "Update failed, data restored" });
-                      });
-                    });
-                  });
-                  return;
-                }
-                res.json({ success: true, userId });
-              });
-            });
-          });
-        });
-      });
+         // ทำงานต่อ
+         fetchSubTables(userId, (backup) => {
+           // ลบเก่า
+           deleteSubTables(userId, () => {
+             // insert ใหม่
+             upsertSkills(userId, req.body.skills || [], (skillErr) => {
+               if (skillErr) {
+                 return res.status(500).json({ error: "Skills insert failed" });
+               }
+               insertSubTables(
+                 userId,
+                 { ...req.body, skills: [] },
+                 (subErr) => {
+                   if (subErr) {
+                     console.error(
+                       "Insert failed, restoring backup...",
+                       subErr,
+                     );
+
+                     // restore — ลบที่เพิ่งใส่ผิดออก แล้ว insert backup กลับ
+                     deleteSubTables(userId, () => {
+                       const backupSkills = (
+                         backup["profile_skills"] || []
+                       ).map((r) => ({
+                         skillId: r.skillId,
+                         name: r.skillName || r.skill,
+                         yearsExp: r.yearsExp || 0,
+                       }));
+                       upsertSkills(userId, backupSkills, () => {
+                         insertSubTables(
+                           userId,
+                           {
+                             experience: backup["profile_experience"] || [],
+                             education: backup["profile_education"] || [],
+                             languages: backup["profile_languages"] || [],
+                             certifications:
+                               backup["profile_certifications"] || [],
+                             projects: backup["profile_projects"] || [],
+                           },
+                           (restoreErr) => {
+                             if (restoreErr)
+                               console.error(
+                                 "Restore also failed:",
+                                 restoreErr,
+                               );
+                             return res
+                               .status(500)
+                               .json({ error: "Update failed, data restored" });
+                           },
+                         );
+                       });
+                     });
+                     return;
+                   }
+                   res.json({ success: true, userId });
+                 },
+               );
+             });
+           });
+         });
+       },
+     );
     }
   });
 });
