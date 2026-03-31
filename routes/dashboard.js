@@ -1,6 +1,6 @@
-  const express = require('express');
+const express = require("express");
 const router = express.Router();
-const db = require('../db');
+const db = require("../db");
 
 function queryAsync(sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -12,7 +12,7 @@ function queryAsync(sql, params = []) {
 }
 
 // Users by month (profile creation date) — exclude admins
-router.get('/users/monthly', async (req, res) => {
+router.get("/users/monthly", async (req, res) => {
   try {
     const rows = await queryAsync(
       `SELECT DATE_FORMAT(p.createdAt, '%Y-%m') AS month, COUNT(*) AS count
@@ -20,7 +20,7 @@ router.get('/users/monthly', async (req, res) => {
        JOIN users u ON p.userId = u.id
        WHERE u.role != 'admin'
        GROUP BY DATE_FORMAT(p.createdAt, '%Y-%m')
-       ORDER BY DATE_FORMAT(p.createdAt, '%Y-%m')`
+       ORDER BY DATE_FORMAT(p.createdAt, '%Y-%m')`,
     );
 
     const labels = rows.map((r) => r.month);
@@ -28,19 +28,23 @@ router.get('/users/monthly', async (req, res) => {
 
     res.json({ labels, data });
   } catch (err) {
-    console.error('DASHBOARD MONTHLY USERS ERROR:', err);
-    res.status(500).json({ error: 'Failed to fetch monthly users' });
+    console.error("DASHBOARD MONTHLY USERS ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch monthly users" });
   }
 });
 
-
-
 // Total/new/returning user stats — exclude admins
-router.get('/users/total', async (req, res) => {
+router.get("/users/total", async (req, res) => {
   try {
-    const totalRow = await queryAsync("SELECT COUNT(*) AS total FROM users WHERE role != 'admin'");
-    const newRow = await queryAsync(`SELECT COUNT(*) AS newUsers FROM profiles p JOIN users u ON p.userId = u.id WHERE u.role != 'admin' AND p.createdAt >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`);
-    const activeRow = await queryAsync("SELECT COUNT(DISTINCT ja.userId) AS activeUsers FROM job_applications ja JOIN users u ON ja.userId = u.id WHERE u.role != 'admin' AND ja.appliedAt >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)");
+    const totalRow = await queryAsync(
+      "SELECT COUNT(*) AS total FROM users WHERE role != 'admin'",
+    );
+    const newRow = await queryAsync(
+      `SELECT COUNT(*) AS newUsers FROM profiles p JOIN users u ON p.userId = u.id WHERE u.role != 'admin' AND p.createdAt >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`,
+    );
+    const activeRow = await queryAsync(
+      "SELECT COUNT(DISTINCT ja.userId) AS activeUsers FROM job_applications ja JOIN users u ON ja.userId = u.id WHERE u.role != 'admin' AND ja.appliedAt >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)",
+    );
 
     const total = totalRow[0]?.total || 0;
     const newly = newRow[0]?.newUsers || 0;
@@ -48,35 +52,39 @@ router.get('/users/total', async (req, res) => {
 
     res.json({ current: total, new: newly, returning });
   } catch (err) {
-    console.error('DASHBOARD TOTAL USERS ERROR:', err);
-    res.status(500).json({ error: 'Failed to fetch total users' });
+    console.error("DASHBOARD TOTAL USERS ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch total users" });
   }
 });
 
 // Users grouped by role — exclude admins
-router.get('/users/by-role', async (req, res) => {
+router.get("/users/by-role", async (req, res) => {
   try {
-    const rows = await queryAsync("SELECT role, COUNT(*) AS count FROM users WHERE role != 'admin' GROUP BY role ORDER BY role");
+    const rows = await queryAsync(
+      "SELECT role, COUNT(*) AS count FROM users WHERE role != 'admin' GROUP BY role ORDER BY role",
+    );
     res.json(rows);
   } catch (err) {
-    console.error('DASHBOARD USERS BY ROLE ERROR:', err);
-    res.status(500).json({ error: 'Failed to fetch users by role' });
+    console.error("DASHBOARD USERS BY ROLE ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch users by role" });
   }
 });
 
 // Active users today (distinct applicants)
-router.get('/users/active-today', async (req, res) => {
+router.get("/users/active-today", async (req, res) => {
   try {
-    const activeToday = await queryAsync("SELECT COUNT(DISTINCT userId) AS activeToday FROM job_applications WHERE DATE(appliedAt) = CURDATE()");
+    const activeToday = await queryAsync(
+      "SELECT COUNT(DISTINCT userId) AS activeToday FROM job_applications WHERE DATE(appliedAt) = CURDATE()",
+    );
     res.json({ activeToday: activeToday[0]?.activeToday || 0 });
   } catch (err) {
-    console.error('DASHBOARD ACTIVE TODAY ERROR:', err);
-    res.status(500).json({ error: 'Failed to fetch active users today' });
+    console.error("DASHBOARD ACTIVE TODAY ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch active users today" });
   }
 });
 
 // Top 5 jobs by applications
-router.get('/jobs/top', async (req, res) => {
+router.get("/jobs/top", async (req, res) => {
   try {
     const rows = await queryAsync(
       `SELECT j.id, j.title, j.company, COUNT(ja.id) AS applications
@@ -84,17 +92,17 @@ router.get('/jobs/top', async (req, res) => {
        JOIN jobs j ON ja.jobId = j.id
        GROUP BY ja.jobId
        ORDER BY applications DESC
-       LIMIT 5`
+       LIMIT 5`,
     );
     res.json(rows);
   } catch (err) {
-    console.error('DASHBOARD TOP JOBS ERROR:', err);
-    res.status(500).json({ error: 'Failed to fetch top jobs' });
+    console.error("DASHBOARD TOP JOBS ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch top jobs" });
   }
 });
 
 // Recent activities (job applications)
-router.get('/activities/recent', async (req, res) => {
+router.get("/activities/recent", async (req, res) => {
   try {
     const rows = await queryAsync(
       `SELECT ja.id, ja.userId, ja.jobId, ja.status, ja.appliedAt, j.title AS jobTitle, p.name AS profileName
@@ -102,35 +110,40 @@ router.get('/activities/recent', async (req, res) => {
        JOIN jobs j ON ja.jobId = j.id
        LEFT JOIN profiles p ON ja.userId = p.userId
        ORDER BY ja.appliedAt DESC
-       LIMIT 7`
+       LIMIT 7`,
     );
     res.json(rows);
   } catch (err) {
-    console.error('DASHBOARD RECENT ACTIVITIES ERROR:', err);
-    res.status(500).json({ error: 'Failed to fetch recent activities' });
+    console.error("DASHBOARD RECENT ACTIVITIES ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch recent activities" });
   }
 });
 
 // Summary for cards — exclude admins
-router.get('/summary', async (req, res) => {
+router.get("/summary", async (req, res) => {
   try {
-    const totalRow    = await queryAsync("SELECT COUNT(*) AS total FROM users WHERE role != 'admin'");
-    const todayRow    = await queryAsync("SELECT COUNT(*) AS today FROM users WHERE role != 'admin' AND DATE(lastLoginAt) = CURDATE()");
-    const newMonthRow = await queryAsync("SELECT COUNT(*) AS newMonth FROM users WHERE role != 'admin' AND MONTH(createdAt) = MONTH(CURDATE()) AND YEAR(createdAt) = YEAR(CURDATE())");
+    const totalRow = await queryAsync(
+      "SELECT COUNT(*) AS total FROM users WHERE role != 'admin'",
+    );
+    const todayRow = await queryAsync(
+      "SELECT COUNT(*) AS today FROM users WHERE role != 'admin' AND DATE(lastLoginAt) = CURDATE()",
+    );
+    const newMonthRow = await queryAsync(
+      "SELECT COUNT(*) AS newMonth FROM users WHERE role != 'admin' AND MONTH(createdAt) = MONTH(CURDATE()) AND YEAR(createdAt) = YEAR(CURDATE())",
+    );
 
-    const total    = totalRow[0]?.total    || 0;
-    const today    = todayRow[0]?.today    || 0;
+    const total = totalRow[0]?.total || 0;
+    const today = todayRow[0]?.today || 0;
     const newMonth = newMonthRow[0]?.newMonth || 0;
 
     res.json({ totalUsers: total, todayUsers: today, newUsersMonth: newMonth });
   } catch (err) {
-    console.error('DASHBOARD SUMMARY ERROR:', err);
-    res.status(500).json({ error: 'Failed to fetch dashboard summary' });
+    console.error("DASHBOARD SUMMARY ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch dashboard summary" });
   }
 });
 
 module.exports = router;
-
 
 /**
  * @swagger

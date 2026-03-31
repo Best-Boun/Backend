@@ -233,8 +233,8 @@ router.put('/:id', verifyToken, isAdmin, (req, res) => {
 });
 
 // ==========================
-// DELETE /api/users/:id  (admin delete)
-// ==========================
+  // DELETE /api/users/:id  (admin delete)
+  // ==========================
 /**
  * @swagger
  * /api/users/{id}:
