@@ -129,7 +129,7 @@ router.post("/login", (req, res) => {
 
     if (result.length === 0) {
       return res.status(400).json({
-        message: "User not found",
+        message: "Invalid email or password",
       });
     }
 
@@ -139,7 +139,7 @@ router.post("/login", (req, res) => {
 
     if (!match) {
       return res.status(400).json({
-        message: "Wrong password",
+        message: "Invalid email or password",
       });
     }
 

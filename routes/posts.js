@@ -51,6 +51,43 @@ router.post("/", verifyToken, (req, res) => {
 });
 
 // ==========================
+// UPDATE POST (🔥 เพิ่มให้)
+// ==========================
+router.put("/:id", verifyToken, (req, res) => {
+  const postId = req.params.id;
+  const userId = req.user.id;
+  const role = req.user.role;
+  const { text } = req.body;
+
+  // หาโพสก่อน
+  db.query("SELECT * FROM posts WHERE id = ?", [postId], (err, result) => {
+    if (err) return res.status(500).json(err);
+
+    if (result.length === 0) {
+      return res.status(404).json({ message: "Post not found" });
+    }
+
+    const post = result[0];
+
+    // เช็คสิทธิ์
+    if (post.userId !== userId && role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    // update ได้
+    db.query(
+      "UPDATE posts SET text = ? WHERE id = ?",
+      [text, postId],
+      (err) => {
+        if (err) return res.status(500).json(err);
+
+        res.json({ message: "Post updated" });
+      },
+    );
+  });
+});
+
+// ==========================
 // DELETE POST
 // ==========================
 router.delete("/:id", verifyToken, (req, res) => {
@@ -81,4 +118,5 @@ router.delete("/:id", verifyToken, (req, res) => {
     });
   });
 });
+
 module.exports = router;

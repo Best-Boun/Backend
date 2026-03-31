@@ -35,6 +35,7 @@ app.use("/api/ads", require("./routes/ads"));
 app.use("/api/jobs", require("./routes/jobs"));
 app.use("/api/profiles", require("./routes/profiles"));
 app.use("/upload", express.static("upload"));
+app.use("/api/likes", require("./routes/likes"));
 
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./swagger");
