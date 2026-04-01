@@ -9,14 +9,14 @@ const verifyToken = require("../middleware/authMiddleware");
 // ==========================
 router.get("/", (req, res) => {
   const sql = `
-    SELECT 
-      posts.*, 
-      users.name AS username,
-      users.profileImage
-    FROM posts
-    JOIN users ON posts.userId = users.id
-    ORDER BY posts.createdAt DESC
-  `;
+  SELECT 
+    posts.*, 
+    users.name AS username,
+    users.profileImage
+  FROM posts
+  JOIN users ON posts.userId = users.id
+  ORDER BY posts.createdAt DESC
+`;
 
   db.query(sql, (err, result) => {
     if (err) {
