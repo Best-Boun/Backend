@@ -2,8 +2,8 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-// ✅ สำคัญ: ใช้ middleware ของทีม (แก้ path ให้ถูก)
-const auth = require("../middleware/auth");
+// ✅ ใช้ middleware ของทีม
+const verifyToken = require("../middleware/authMiddleware");
 
 // ─────────────────────────────────────────────
 // Helper
@@ -53,7 +53,7 @@ function buildDataJson(body, fallback = {}) {
 // ─────────────────────────────────────────────
 // POST → สร้าง Resume
 // ─────────────────────────────────────────────
-router.post("/", auth, (req, res) => {
+router.post("/", verifyToken, (req, res) => {
   if (!req.body.fullName) {
     return res.status(400).json({
       success: false,
@@ -88,7 +88,7 @@ router.post("/", auth, (req, res) => {
 // ─────────────────────────────────────────────
 // GET → เอา resume ของตัวเอง
 // ─────────────────────────────────────────────
-router.get("/me", auth, (req, res) => {
+router.get("/me", verifyToken, (req, res) => {
   db.query(
     "SELECT * FROM resumes WHERE user_id = ? LIMIT 1",
     [req.user.id],
@@ -118,7 +118,7 @@ router.get("/me", auth, (req, res) => {
 // ─────────────────────────────────────────────
 // PUT → แก้ไข
 // ─────────────────────────────────────────────
-router.put("/:id", auth, (req, res) => {
+router.put("/:id", verifyToken, (req, res) => {
   const { id } = req.params;
 
   if (!isValidId(id)) {
@@ -163,7 +163,7 @@ router.put("/:id", auth, (req, res) => {
 // ─────────────────────────────────────────────
 // DELETE → ลบ
 // ─────────────────────────────────────────────
-router.delete("/:id", auth, (req, res) => {
+router.delete("/:id", verifyToken, (req, res) => {
   const { id } = req.params;
 
   if (!isValidId(id)) {
