@@ -1,67 +1,68 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
-
 const verifyToken = require("../middleware/authMiddleware");
 
 // ==========================
 // GET POSTS
 // ==========================
-router.get("/", (req, res) => {
-  const sql = `
-  SELECT 
-    posts.*, 
-    users.name AS username,
-    users.profileImage
-  FROM posts
-  JOIN users ON posts.userId = users.id
-  ORDER BY posts.createdAt DESC
-`;
+router.get("/", async (req, res) => {
+  try {
+    const sql = `
+      SELECT 
+        posts.*, 
+        users.name AS username,
+        users.profileImage
+      FROM posts
+      JOIN users ON posts.userId = users.id
+      ORDER BY posts.createdAt DESC
+    `;
 
-  db.query(sql, (err, result) => {
-    if (err) {
-      return res.status(500).json(err);
-    }
+    const [result] = await db.query(sql);
 
     res.json(result);
-  });
+  } catch (err) {
+    console.error("GET POSTS ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // ==========================
 // CREATE POST
 // ==========================
-router.post("/", verifyToken, (req, res) => {
-  const userId = req.user.id;
-  const { text } = req.body;
+router.post("/", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { text } = req.body;
 
-  const sql = `
-    INSERT INTO posts (userId, text)
-    VALUES (?, ?)
-  `;
+    const sql = `
+      INSERT INTO posts (userId, text)
+      VALUES (?, ?)
+    `;
 
-  db.query(sql, [userId, text], (err, result) => {
-    if (err) {
-      return res.status(500).json(err);
-    }
+    await db.query(sql, [userId, text]);
 
-    res.json({
-      message: "Post created",
-    });
-  });
+    res.json({ message: "Post created" });
+  } catch (err) {
+    console.error("CREATE POST ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // ==========================
-// UPDATE POST (🔥 เพิ่มให้)
+// UPDATE POST
 // ==========================
-router.put("/:id", verifyToken, (req, res) => {
-  const postId = req.params.id;
-  const userId = req.user.id;
-  const role = req.user.role;
-  const { text } = req.body;
+router.put("/:id", verifyToken, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const userId = req.user.id;
+    const role = req.user.role;
+    const { text } = req.body;
 
-  // หาโพสก่อน
-  db.query("SELECT * FROM posts WHERE id = ?", [postId], (err, result) => {
-    if (err) return res.status(500).json(err);
+    // หาโพสก่อน
+    const [result] = await db.query("SELECT * FROM posts WHERE id = ?", [
+      postId,
+    ]);
 
     if (result.length === 0) {
       return res.status(404).json({ message: "Post not found" });
@@ -74,30 +75,29 @@ router.put("/:id", verifyToken, (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    // update ได้
-    db.query(
-      "UPDATE posts SET text = ? WHERE id = ?",
-      [text, postId],
-      (err) => {
-        if (err) return res.status(500).json(err);
+    // update
+    await db.query("UPDATE posts SET text = ? WHERE id = ?", [text, postId]);
 
-        res.json({ message: "Post updated" });
-      },
-    );
-  });
+    res.json({ message: "Post updated" });
+  } catch (err) {
+    console.error("UPDATE POST ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // ==========================
 // DELETE POST
 // ==========================
-router.delete("/:id", verifyToken, (req, res) => {
-  const postId = req.params.id;
-  const userId = req.user.id;
-  const role = req.user.role;
+router.delete("/:id", verifyToken, async (req, res) => {
+  try {
+    const postId = req.params.id;
+    const userId = req.user.id;
+    const role = req.user.role;
 
-  // หาโพสก่อน
-  db.query("SELECT * FROM posts WHERE id = ?", [postId], (err, result) => {
-    if (err) return res.status(500).json(err);
+    // หาโพสก่อน
+    const [result] = await db.query("SELECT * FROM posts WHERE id = ?", [
+      postId,
+    ]);
 
     if (result.length === 0) {
       return res.status(404).json({ message: "Post not found" });
@@ -110,13 +110,14 @@ router.delete("/:id", verifyToken, (req, res) => {
       return res.status(403).json({ message: "Forbidden" });
     }
 
-    // ลบได้
-    db.query("DELETE FROM posts WHERE id = ?", [postId], (err) => {
-      if (err) return res.status(500).json(err);
+    // ลบ
+    await db.query("DELETE FROM posts WHERE id = ?", [postId]);
 
-      res.json({ message: "Post deleted" });
-    });
-  });
+    res.json({ message: "Post deleted" });
+  } catch (err) {
+    console.error("DELETE POST ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 module.exports = router;

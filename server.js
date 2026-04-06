@@ -4,10 +4,23 @@ const express = require("express");
 const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
-
+const commentRoutes = require("./routes/comments");
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://your-frontend-domain.com",
+];
+
+app.use(
+  cors({
+    origin: allowedOrigins,
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
+
 app.use(express.json());
 
 // Multer setup
@@ -40,10 +53,13 @@ app.use("/api/profiles", require("./routes/profiles"));
 app.use("/upload", express.static(path.join(__dirname, "upload")));
 app.use("/api/likes", require("./routes/likes"));
 app.use("/api/dashboard", require("./routes/dashboard"));
+app.use("/api/comments", commentRoutes);
 
 
 const swaggerUi = require("swagger-ui-express");
 const swaggerSpec = require("./swagger");
+
+
 
 app.use(
   "/api-docs",

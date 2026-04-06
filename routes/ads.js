@@ -44,162 +44,179 @@ const upload = multer({ storage });
 // =======================
 // ✅ GET ADS
 // =======================
-router.get("/", verifyToken, isAdmin, (req, res) => {
-  const sql = "SELECT * FROM ads ORDER BY date DESC";
-
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("GET ADS ERROR:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
+router.get("/", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const sql = "SELECT * FROM ads ORDER BY date DESC";
+    const [result] = await db.query(sql);
 
     res.json({ adsList: result });
-  });
+  } catch (err) {
+    console.error("GET ADS ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // =======================
 // PUBLIC ADS (for feed)
 // =======================
-router.get("/public", (req, res) => {
-  const sql = "SELECT * FROM ads WHERE active = 1 ORDER BY date DESC";
-
-  db.query(sql, (err, result) => {
-    if (err) {
-      console.error("GET PUBLIC ADS ERROR:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
+router.get("/public", async (req, res) => {
+  try {
+    const sql = "SELECT * FROM ads WHERE active = 1 ORDER BY date DESC";
+    const [result] = await db.query(sql);
 
     res.json({ adsList: result });
-  });
+  } catch (err) {
+    console.error("GET PUBLIC ADS ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
   // =======================
 // GET AD BY ID
 // =======================
-router.get("/:id", verifyToken, isAdmin, (req, res) => {
-  const id = req.params.id;
+router.get("/:id", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
 
-  const sql = "SELECT * FROM ads WHERE id = ?";
+    const [rows] = await db.query("SELECT * FROM ads WHERE id = ?", [id]);
 
-  db.query(sql, [id], (err, result) => {
-    if (err) {
-      console.error("GET AD BY ID ERROR:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
-
-    if (result.length === 0) {
+    if (!rows[0]) {
       return res.status(404).json({ message: "Ad not found" });
     }
 
-    res.json(result[0]);
-  });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error("GET AD BY ID ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // =======================
 // CREATE AD
 // =======================
-router.post("/", verifyToken, isAdmin, upload.single("image"), (req, res) => {
-  const { name, description, active } = req.body;
+router.post(
+  "/",
+  verifyToken,
+  isAdmin,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const { name, description, active } = req.body;
 
-  const image = req.file ? req.file.filename : req.body.image || null;
+      const image = req.file ? req.file.filename : req.body.image || null;
 
-  const ad = {
-    name: name || "New Ad",
-    description: description || "",
-    image,
-    position: "feed",
-    sizePreset: "medium",
-    customWidth: null,
-    customHeight: null,
-    date: new Date().toISOString().split("T")[0],
-    active: active ?? 1,
-  };
+      const ad = {
+        name: name || "New Ad",
+        description: description || "",
+        image,
+        position: "feed",
+        sizePreset: "medium",
+        date: new Date().toISOString().split("T")[0],
+        active: active ?? 1,
+      };
 
-  db.query("INSERT INTO ads SET ?", ad, (err, result) => {
-    if (err) {
+      const [result] = await db.query("INSERT INTO ads SET ?", ad);
+
+      res.json({
+        success: true,
+        id: result.insertId,
+        ...ad,
+      });
+    } catch (err) {
       console.error("CREATE AD ERROR:", err);
-      return res.status(500).json({ error: "Insert failed" });
+      res.status(500).json({ error: "Insert failed" });
     }
-
-    res.json({
-      success: true,
-      id: result.insertId,
-      ...ad,
-    });
-  });
-});
+  },
+);
 
 // =======================
 // UPDATE AD
 // =======================
-router.put("/:id", verifyToken, isAdmin, upload.single("image"), (req, res) => {
-  const id = req.params.id;
-  const { name, description, active } = req.body;
+router.put(
+  "/:id",
+  verifyToken,
+  isAdmin,
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { name, description, active } = req.body;
 
-  let newImage = req.file ? req.file.filename : null;
+      const [rows] = await db.query("SELECT image FROM ads WHERE id = ?", [id]);
 
-  db.query("SELECT image FROM ads WHERE id = ?", [id], (err, result) => {
-    if (err) return res.status(500).json(err);
+      if (!rows[0]) {
+        return res.status(404).json({ message: "Ad not found" });
+      }
 
-    if (!result[0]) {
-      return res.status(404).json({ message: "Ad not found" });
-    }
+      const oldImage = rows[0].image;
+      let newImage;
 
-    const oldImage = result[0].image;
+      if (req.file) {
+        // 🔥 มีอัปโหลดใหม่
+        newImage = req.file.filename;
 
-    // 🔥 FIX path ลบรูป
-    if (newImage && oldImage) {
-      const fixedPath = oldImage.replace("/upload/", "upload/");
-      const oldPath = path.join(__dirname, "..", fixedPath);
-
-      fs.unlink(oldPath, (err) => {
-        if (err) {
-          console.log("❌ ลบรูปเก่าไม่สำเร็จ:", err.message);
-        } else {
-          console.log("✅ ลบรูปเก่าแล้ว");
+        // 🔥 ลบรูปเก่า
+        if (oldImage) {
+          const oldPath = path.join(__dirname, "../upload", oldImage);
+          fs.unlink(oldPath, (err) => {
+            if (err) console.log("ลบรูปเก่าไม่สำเร็จ:", err.message);
+          });
         }
-      });
-    }
+      } else if (req.body.image === "") {
+        // 🔥 กด Delete Image
+        newImage = null;
 
-    const finalImage = newImage || oldImage;
+        if (oldImage) {
+          const oldPath = path.join(__dirname, "../upload", oldImage);
+          fs.unlink(oldPath, (err) => {
+            if (err) console.log("ลบรูปเก่าไม่สำเร็จ:", err.message);
+          });
+        }
+      } else {
+        // 🔥 ไม่ได้แก้รูป
+        newImage = oldImage;
+      }
 
-    // 🔥 FIX active
-    const finalActive = active ?? 1;
-
-    const sql = `
+      const sql = `
       UPDATE ads 
       SET name=?, description=?, image=?, active=?
       WHERE id=?
     `;
 
-    db.query(sql, [name, description, finalImage, finalActive, id], (err) => {
-      if (err) {
-        console.error("UPDATE ERROR:", err);
-        return res.status(500).json({ error: "Update failed" });
-      }
+      await db.query(sql, [name, description, newImage, active ?? 1, id]);
 
       res.json({
         success: true,
-        image: finalImage,
+        image: newImage,
       });
-    });
-  });
-});
+    } catch (err) {
+      console.error("UPDATE ERROR:", err);
+      res.status(500).json({ error: "Update failed" });
+    }
+  },
+);
 
 // =======================
 // DELETE AD
 // =======================
-router.delete("/:id", verifyToken, isAdmin, (req, res) => {
-  const id = req.params.id;
+router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const id = req.params.id;
 
-  db.query("DELETE FROM ads WHERE id = ?", [id], (err) => {
-    if (err) {
-      console.error("DELETE AD ERROR:", err);
-      return res.status(500).json({ error: "Delete failed" });
+    console.log("DELETE ID:", id);
+
+    if (!id) {
+      return res.status(400).json({ error: "No ID" });
     }
 
+    const sql = "DELETE FROM ads WHERE id = ?";
+    await db.query(sql, [id]);
+
     res.json({ success: true });
-  });
+  } catch (err) {
+    console.error("DELETE ERROR:", err);
+    res.status(500).json({ error: "Delete failed" });
+  }
 });
 
 module.exports = router;

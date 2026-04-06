@@ -1,91 +1,67 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
-const verifyToken = require('../middleware/authMiddleware');
+const verifyToken = require("../middleware/authMiddleware");
+
+
+function parseJSON(data) {
+  try {
+    return JSON.parse(data || "[]");
+  } catch (err) {
+    console.error("JSON parse error:", err);
+    return [];
+  }
+}
 
 // ==========================
 // GET ALL JOBS (with filters)
 // ==========================
 
-router.get("/", (req, res) => {
-  const { search, location, type, level, active } = req.query;
+router.get("/", async (req, res) => {
+  try {
+    
 
-  let sql = "SELECT * FROM jobs WHERE active = 1";
-  const params = [];
+    const { search, location, type, level } = req.query;
 
-  // Search by title or company
-  if (search) {
-    sql += " AND (title LIKE ? OR company LIKE ?)";
-    params.push(`%${search}%`, `%${search}%`);
-  }
+    let sql = "SELECT * FROM jobs WHERE active = 1";
+    const params = [];
 
-  // Filter by location
-  if (location) {
-    sql += " AND location = ?";
-    params.push(location);
-  }
-
-  // Filter by type
-  if (type) {
-    sql += " AND type = ?";
-    params.push(type);
-  }
-
-  // Filter by level
-  if (level) {
-    sql += " AND level = ?";
-    params.push(level);
-  }
-
-  sql += " ORDER BY postedDate DESC";
-
-  db.query(sql, params, (err, result) => {
-    if (err) {
-      console.error("GET JOBS ERROR:", err);
-      return res.status(500).json({ error: "Database error" });
+    if (search) {
+      sql += " AND (title LIKE ? OR company LIKE ?)";
+      params.push(`%${search}%`, `%${search}%`);
     }
 
-    // Parse JSON fields
-    const jobs = result.map((job) => ({
+    if (location) {
+      sql += " AND location = ?";
+      params.push(location);
+    }
+
+    if (type) {
+      sql += " AND type = ?";
+      params.push(type);
+    }
+
+    if (level) {
+      sql += " AND level = ?";
+      params.push(level);
+    }
+
+    sql += " ORDER BY postedDate DESC";
+
+    // 🔥 ตรงนี้สำคัญ
+    const [result] = await db.query(sql, params);
+
+    const jobs = (result || []).map((job) => ({
       ...job,
       requirements: parseJSON(job.requirements),
       benefits: parseJSON(job.benefits),
     }));
 
-    // fetch jobSkills สำหรับทุก job พร้อมกัน
-    if (jobs.length === 0) return res.json([]);
-
-    const jobIds = jobs.map(j => j.id);
-
-    db.query(
-      `SELECT js.jobId, js.skillId, js.requiredLevel, s.name AS skill
-       FROM job_skills js
-       JOIN skills s ON js.skillId = s.id
-       WHERE js.jobId IN (?)`,
-      [jobIds],
-      (err2, skillRows) => {
-        if (err2) return res.json(jobs); // fallback ถ้า error
-
-        // group skillRows by jobId
-        const skillMap = {};
-        skillRows.forEach(row => {
-          if (!skillMap[row.jobId]) skillMap[row.jobId] = [];
-          skillMap[row.jobId].push({
-            skillId: row.skillId,
-            skill: row.skill,
-            requiredLevel: row.requiredLevel,
-          });
-        });
-
-        const jobsWithSkills = jobs.map(job => ({
-          ...job,
-          jobSkills: skillMap[job.id] || [],
-        }));
-
-        res.json(jobsWithSkills);
-      }
-    );
-  });
+    return res.json(jobs);
+  } catch (err) {
+    console.error("GET JOBS ERROR:", err);
+    return res.status(500).json({ error: "Database error" });
+  }
 });
 
 // ==========================
@@ -93,7 +69,8 @@ router.get("/", (req, res) => {
 // ==========================
 router.get("/filters/options", (req, res) => {
   const queries = {
-    locations: "SELECT DISTINCT location FROM jobs WHERE active=1 ORDER BY location",
+    locations:
+      "SELECT DISTINCT location FROM jobs WHERE active=1 ORDER BY location",
     types: "SELECT DISTINCT type FROM jobs WHERE active=1 ORDER BY type",
     levels: "SELECT DISTINCT level FROM jobs WHERE active=1 ORDER BY level",
   };
@@ -149,7 +126,11 @@ router.patch("/applications/:appId/status", (req, res) => {
   const VALID_STATUSES = ["Applied", "Interview", "Offer", "Rejected"];
 
   if (!VALID_STATUSES.includes(status)) {
-    return res.status(400).json({ error: "status must be one of: Applied, Interview, Offer, Rejected" });
+    return res
+      .status(400)
+      .json({
+        error: "status must be one of: Applied, Interview, Offer, Rejected",
+      });
   }
 
   db.query(
@@ -161,7 +142,7 @@ router.patch("/applications/:appId/status", (req, res) => {
         return res.status(500).json({ error: "Update failed" });
       }
       res.json({ success: true, id: req.params.appId, status });
-    }
+    },
   );
 });
 
@@ -169,199 +150,147 @@ router.patch("/applications/:appId/status", (req, res) => {
 // DELETE APPLICATION
 // ==========================
 router.delete("/applications/:id", (req, res) => {
-  db.query("DELETE FROM job_applications WHERE id = ?", [req.params.id], (err) => {
-    if (err) {
-      console.error("DELETE APPLICATION ERROR:", err);
-      return res.status(500).json({ error: "Delete failed" });
-    }
-    res.json({ success: true });
-  });
-});
-
-// ==========================
-// GET APPLICANTS FOR A JOB
-// ==========================
-router.get("/:jobId/applicants", (req, res) => {
-  // Step 1: ดึง job_skills
   db.query(
-    'SELECT js.skillId, js.requiredLevel, js.weight, js.required FROM job_skills js WHERE js.jobId = ?',
-    [req.params.jobId],
-    (err, jobSkillRows) => {
-      if (err) return res.status(500).json({ error: "Database error" });
-
-      // Step 2: ดึง applicants พร้อม skillData จาก profile_skills
-      const sql = `
-        SELECT
-          ja.id, ja.userId, ja.jobId, ja.status, ja.appliedAt,
-          u.name AS username,
-          p.name AS profileName,
-          p.title, p.profileImage,
-          j.title AS jobTitle,
-          GROUP_CONCAT(DISTINCT CONCAT(ps.skillId, ':', ps.yearsExp, ':', s.name) ORDER BY ps.skillId) AS skillData
-        FROM job_applications ja
-        JOIN users u ON ja.userId = u.id
-        JOIN jobs j ON ja.jobId = j.id
-        LEFT JOIN profiles p ON ja.userId = p.userId
-        LEFT JOIN profile_skills ps ON ja.userId = ps.userId
-        LEFT JOIN skills s ON ps.skillId = s.id
-        WHERE ja.jobId = ?
-        GROUP BY ja.id
-      `;
-
-      db.query(sql, [req.params.jobId], (err, rows) => {
-        if (err) return res.status(500).json({ error: "Database error" });
-
-        const jobTitle = rows.length > 0 ? rows[0].jobTitle : "";
-
-        const applicants = rows.map((row) => {
-          const skillData = row.skillData
-            ? Object.fromEntries(row.skillData.split(',').map(entry => {
-                const [id, exp, ...nameParts] = entry.split(':');
-                return [id, { yearsExp: parseInt(exp) || 0, name: nameParts.join(':') }];
-              }))
-            : {};
-
-          const levelMap = { Beginner: 1, Intermediate: 2, Advanced: 3 };
-          const getUserLevel = (yearsExp) => {
-            if (yearsExp >= 3) return 'Advanced';
-            if (yearsExp >= 1) return 'Intermediate';
-            return 'Beginner';
-          };
-
-          let weightedScore = 0;
-          let totalWeight = 0;
-
-          jobSkillRows.forEach(({ skillId, requiredLevel, weight = 2, required = true }) => {
-            const w = weight || 2;
-            totalWeight += w;
-
-            const entry = skillData[String(skillId)];
-
-            if (!entry) {
-              const penalty = required ? -0.5 : 0;
-              weightedScore += penalty * w;
-              return;
-            }
-
-            const userLevel = entry.yearsExp >= 3 ? 3 : entry.yearsExp >= 1 ? 2 : 1;
-            const reqLevel = levelMap[requiredLevel] || 2;
-            const gap = reqLevel - userLevel;
-
-            let score;
-            if (gap <= 0)       score = 1.0;
-            else if (gap === 1) score = 0.6;
-            else if (gap === 2) score = 0.3;
-            else                score = 0;
-
-            weightedScore += score * w;
-          });
-
-          const matchScore = totalWeight > 0
-            ? Math.max(0, Math.round((weightedScore / totalWeight) * 100))
-            : 0;
-
-          // สร้าง skills array — name อยู่ใน entry แล้ว ไม่ต้อง zip กับ skillNames
-          const skills = Object.entries(skillData).map(([skillId, entry]) => {
-            const jobSkill = jobSkillRows.find(js => String(js.skillId) === String(skillId));
-            return {
-              skillId: parseInt(skillId),
-              skillName: entry.name || skillId,
-              yearsExp: entry.yearsExp,
-              level: getUserLevel(entry.yearsExp),
-              required: !!jobSkill,
-              requiredLevel: jobSkill?.requiredLevel || null,
-            };
-          });
-
-          return {
-            id: row.id,
-            userId: row.userId,
-            jobId: row.jobId,
-            name: row.profileName || row.username,
-            title: row.title || null,
-            profileImage: row.profileImage || null,
-            status: row.status || 'Applied',
-            appliedAt: row.appliedAt,
-            matchScore,
-            skills,
-          };
-        });
-
-        applicants.sort((a, b) => b.matchScore - a.matchScore);
-        res.json({ jobTitle, applicants });
-      });
-    }
+    "DELETE FROM job_applications WHERE id = ?",
+    [req.params.id],
+    (err) => {
+      if (err) {
+        console.error("DELETE APPLICATION ERROR:", err);
+        return res.status(500).json({ error: "Delete failed" });
+      }
+      res.json({ success: true });
+    },
   );
 });
 
 // ==========================
 // EMPLOYER — ALL JOBS (manage)
 // ==========================
-router.get("/manage", (req, res) => {
-  const { userId } = req.query;
+router.get("/manage", async (req, res) => {
+  try {
+    const { userId } = req.query;
 
-  if (!userId) {
-    return res.status(400).json({ error: "userId is required" });
-  }
+    if (!userId) {
+      return res.status(400).json({ error: "userId is required" });
+    }
 
-  db.query(
-    "SELECT * FROM jobs WHERE userId = ? ORDER BY postedDate DESC",
-    [userId],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: "Database error" });
-      res.json(result.map(job => ({
+    const [result] = await db.query(
+      "SELECT * FROM jobs WHERE userId = ? ORDER BY postedDate DESC",
+      [userId]
+    );
+
+    res.json(
+      result.map((job) => ({
         ...job,
         requirements: parseJSON(job.requirements),
         benefits: parseJSON(job.benefits),
-      })));
-    }
-  );
+      }))
+    );
+  } catch (err) {
+    console.error("MANAGE JOB ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
+
+// ==========================
+// GET APPLICANTS FOR A JOB
+// ==========================
+router.get("/:jobId/applicants", async (req, res) => {
+  try {
+    const jobId = req.params.jobId;
+
+    // 🔥 step 1: job skills
+    const [skillRows] = await db.query(
+      `SELECT js.jobId, js.skillId, js.requiredLevel, s.name AS skill
+       FROM job_skills js
+       JOIN skills s ON js.skillId = s.id
+       WHERE js.jobId = ?`,
+      [jobId],
+    );
+
+    // 🔥 step 2: applicants
+    const [rows] = await db.query(
+      `SELECT
+        ja.id, ja.userId, ja.jobId, ja.status, ja.appliedAt,
+        u.name AS username,
+        p.name AS profileName,
+        p.title, p.profileImage,
+        j.title AS jobTitle,
+        GROUP_CONCAT(DISTINCT CONCAT(ps.skillId, ':', ps.yearsExp, ':', s.name)) AS skillData
+      FROM job_applications ja
+      JOIN users u ON ja.userId = u.id
+      JOIN jobs j ON ja.jobId = j.id
+      LEFT JOIN profiles p ON ja.userId = p.userId
+      LEFT JOIN profile_skills ps ON ja.userId = ps.userId
+      LEFT JOIN skills s ON ps.skillId = s.id
+      WHERE ja.jobId = ?
+      GROUP BY ja.id`,
+      [jobId],
+    );
+
+    const applicants = rows.map((row) => ({
+      ...row,
+      skillData: row.skillData || "",
+    }));
+
+    res.json({ applicants });
+  } catch (err) {
+    console.error("APPLICANTS ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+
 
 // ==========================
 // GET SINGLE JOB BY ID
 // ==========================
-router.get("/:id", (req, res) => {
-  const sql = "SELECT * FROM jobs WHERE id = ?";
+router.get("/:id", async (req, res) => {
+  console.log("🔥 JOB DETAIL HIT:", req.params.id);
 
-  db.query(sql, [req.params.id], (err, result) => {
-    if (err) {
-      console.error("GET JOB ERROR:", err);
-      return res.status(500).json({ error: "Database error" });
+  try {
+    const jobId = Number(req.params.id);
+
+    if (!jobId) {
+      return res.status(400).json({ error: "Invalid jobId" });
     }
 
-    if (result.length === 0) {
+    const [rows] = await db.query("SELECT * FROM jobs WHERE id = ?", [jobId]);
+
+    if (!rows.length) {
       return res.status(404).json({ error: "Job not found" });
     }
 
-    const job = result[0];
-    job.requirements = parseJSON(job.requirements);
-    job.benefits = parseJSON(job.benefits);
+    const job = rows[0];
 
-    // fetch jobSkills
-    db.query(
-      `SELECT js.skillId, js.requiredLevel, js.weight, js.required, s.name AS skill
+    // 🔥 ดึง skills
+    const [skillRows] = await db.query(
+      `SELECT js.jobId, js.skillId, js.requiredLevel, s.name AS skill
        FROM job_skills js
        JOIN skills s ON js.skillId = s.id
        WHERE js.jobId = ?`,
-      [job.id],
-      (err2, skillRows) => {
-        if (err2) {
-          job.jobSkills = [];
-          return res.json(job);
-        }
-        job.jobSkills = skillRows.map(r => ({
-          skillId: r.skillId,
-          skill: r.skill,
-          requiredLevel: r.requiredLevel,
-          weight: r.weight || 2,
-          required: Boolean(r.required),
-        }));
-        res.json(job);
-      }
+      [jobId],
     );
-  });
+
+    job.jobSkills = skillRows.map((r) => ({
+      skillId: r.skillId,
+      skill: r.skill,
+      requiredLevel: r.requiredLevel,
+      weight: r.weight || 2,
+      required: Boolean(r.required),
+    }));
+
+    // 🔥 parse JSON
+    job.requirements = parseJSON(job.requirements);
+    job.benefits = parseJSON(job.benefits);
+
+    res.json(job);
+  } catch (err) {
+    console.error("JOB DETAIL ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
+
 
 // ==========================
 // CREATE JOB
@@ -386,7 +315,9 @@ router.post("/", verifyToken, (req, res) => {
   } = req.body;
 
   if (!title || !company || !location || !salary) {
-    return res.status(400).json({ error: "title, company, location, salary are required" });
+    return res
+      .status(400)
+      .json({ error: "title, company, location, salary are required" });
   }
 
   db.query(
@@ -395,7 +326,11 @@ router.post("/", verifyToken, (req, res) => {
     (err, result) => {
       if (err) return res.status(500).json({ error: "Database error" });
       if (result.length === 0) {
-        return res.status(403).json({ error: "Please create a Company Profile before posting jobs" });
+        return res
+          .status(403)
+          .json({
+            error: "Please create a Company Profile before posting jobs",
+          });
       }
 
       const job = {
@@ -436,7 +371,7 @@ router.post("/", verifyToken, (req, res) => {
           });
         });
       });
-    }
+    },
   );
 });
 
@@ -518,59 +453,35 @@ router.delete("/:id", verifyToken, (req, res) => {
 // ==========================
 // APPLY FOR JOB
 // ==========================
-router.post("/:id/apply", (req, res) => {
+router.post("/:id/apply", async (req, res) => {
   const jobId = req.params.id;
   const { userId } = req.body;
 
-  if (!userId) {
-    return res.status(400).json({ error: "userId is required" });
-  }
-
-  // Check role from DB before allowing apply
-  db.query("SELECT role FROM users WHERE id = ?", [userId], (err, result) => {
-    if (err) {
-      console.error("ROLE CHECK ERROR:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
-
-    const user = result[0];
-    if (!user || user.role !== 'seeker') {
-      return res.status(403).json({ error: "Only seekers can apply for jobs" });
-    }
-
-    // Check if already applied
-    db.query(
+  try {
+    // 🔥 เช็คก่อน
+    const [exist] = await db.query(
       "SELECT * FROM job_applications WHERE jobId=? AND userId=?",
       [jobId, userId],
-      (err2, existing) => {
-        if (err2) {
-          console.error("CHECK APPLICATION ERROR:", err2);
-          return res.status(500).json({ error: "Database error" });
-        }
-
-        if (existing.length > 0) {
-          return res.status(409).json({ error: "Already applied" });
-        }
-
-        // Insert application
-        db.query(
-          "INSERT INTO job_applications (jobId, userId) VALUES (?, ?)",
-          [jobId, userId],
-          (err3) => {
-            if (err3) {
-              console.error("APPLY ERROR:", err3);
-              return res.status(500).json({ error: "Apply failed" });
-            }
-
-            // Increment applicants count
-            db.query("UPDATE jobs SET applicants = applicants + 1 WHERE id = ?", [jobId]);
-
-            res.json({ success: true, message: "Applied successfully" });
-          }
-        );
-      }
     );
-  });
+
+    if (exist.length > 0) {
+      return res.status(409).json({ message: "Already applied" });
+    }
+
+    await db.query(
+      "INSERT INTO job_applications (jobId, userId) VALUES (?, ?)",
+      [jobId, userId],
+    );
+
+    await db.query("UPDATE jobs SET applicants = applicants + 1 WHERE id = ?", [
+      jobId,
+    ]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error("APPLY ERROR:", err);
+    res.status(500).json({ error: err.message }); // 🔥 เปลี่ยนตรงนี้
+  }
 });
 
 // ================================================
@@ -579,7 +490,7 @@ router.post("/:id/apply", (req, res) => {
 function upsertJobSkills(jobId, jobSkills, callback) {
   if (!jobSkills || jobSkills.length === 0) return callback(null);
 
-  db.query('DELETE FROM job_skills WHERE jobId = ?', [jobId], (err) => {
+  db.query("DELETE FROM job_skills WHERE jobId = ?", [jobId], (err) => {
     if (err) return callback(err);
 
     let done = 0;
@@ -587,17 +498,30 @@ function upsertJobSkills(jobId, jobSkills, callback) {
 
     jobSkills.forEach(({ skillId, skill, requiredLevel, weight, required }) => {
       const id = skillId || null;
-      if (!id) { done++; if (done === jobSkills.length) callback(null); return; }
+      if (!id) {
+        done++;
+        if (done === jobSkills.length) callback(null);
+        return;
+      }
 
       db.query(
-        'INSERT INTO job_skills (jobId, skillId, requiredLevel, weight, required) VALUES (?, ?, ?, ?, ?)',
-        [jobId, id, requiredLevel || 'Intermediate', weight || 2, required !== undefined ? (required ? 1 : 0) : 1],
+        "INSERT INTO job_skills (jobId, skillId, requiredLevel, weight, required) VALUES (?, ?, ?, ?, ?)",
+        [
+          jobId,
+          id,
+          requiredLevel || "Intermediate",
+          weight || 2,
+          required !== undefined ? (required ? 1 : 0) : 1,
+        ],
         (err2) => {
           if (errored) return;
-          if (err2) { errored = true; return callback(err2); }
+          if (err2) {
+            errored = true;
+            return callback(err2);
+          }
           done++;
           if (done === jobSkills.length) callback(null);
-        }
+        },
       );
     });
   });
@@ -617,11 +541,6 @@ function parseJSON(value) {
 }
 
 module.exports = router;
-
-
-
-
-
 
 /**
  * @swagger
@@ -864,3 +783,4 @@ module.exports = router;
  *       200:
  *         description: สำเร็จ
  */
+
