@@ -309,6 +309,10 @@ router.get("/", (req, res) => {
 router.post("/", verifyToken, (req, res) => {
   const { userId } = req.body;
 
+  if (parseInt(userId) !== req.user.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
   if (!userId) {
     return res.status(400).json({ error: "userId is required" });
   }
@@ -348,6 +352,10 @@ router.post("/", verifyToken, (req, res) => {
 // ================================================
 router.put("/:userId", verifyToken, (req, res) => {
   const userId = parseInt(req.params.userId);
+
+  if (userId !== req.user.id) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
 
   const updates = {};
   PROFILE_FIELDS.forEach((f) => {
@@ -456,6 +464,44 @@ router.put("/:userId", verifyToken, (req, res) => {
        },
      );
     }
+  });
+});
+
+// ================================================
+// GET /api/profiles/search?skill=React&location=Bangkok&name=John
+// ================================================
+router.get('/search', (req, res) => {
+  const { skill, location, name } = req.query;
+
+  let sql = `
+    SELECT DISTINCT p.userId, p.name, p.title, p.location, p.profileImage, p.openToWork,
+      GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS skillNames
+    FROM profiles p
+    JOIN users u ON p.userId = u.id
+    LEFT JOIN profile_skills ps ON p.userId = ps.userId
+    LEFT JOIN skills s ON ps.skillId = s.id
+    WHERE u.role = 'seeker' AND p.name IS NOT NULL AND p.name != ''
+  `;
+  const params = [];
+
+  if (name) {
+    sql += ' AND p.title LIKE ?';
+    params.push(`%${name}%`);
+  }
+  if (location) {
+    sql += ' AND p.location LIKE ?';
+    params.push(`%${location}%`);
+  }
+  if (skill) {
+    sql += ' AND p.userId IN (SELECT ps2.userId FROM profile_skills ps2 JOIN skills s2 ON ps2.skillId = s2.id WHERE s2.name LIKE ?)';
+    params.push(`%${skill}%`);
+  }
+
+  sql += ' GROUP BY p.userId ORDER BY p.name ASC LIMIT 20';
+
+  db.query(sql, params, (err, result) => {
+    if (err) return res.status(500).json({ error: 'Database error' });
+    res.json(result);
   });
 });
 

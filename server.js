@@ -40,6 +40,8 @@ app.use("/api/profiles", require("./routes/profiles"));
 app.use("/upload", express.static(path.join(__dirname, "upload")));
 app.use("/api/likes", require("./routes/likes"));
 app.use("/api/dashboard", require("./routes/dashboard"));
+app.use('/api/notifications', require('./routes/notifications'));
+app.use('/api/chat', require('./routes/chat'));
 
 
 const swaggerUi = require("swagger-ui-express");
@@ -79,6 +81,85 @@ app.get("/", (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+const http = require('http');
+const { Server } = require('socket.io');
+
+const httpServer = http.createServer(app);
+const io = new Server(httpServer, {
+  cors: { origin: '*', methods: ['GET', 'POST'] }
+});
+
+io.on('connection', (socket) => {
+  // Join conversation room
+  socket.on('join_conversation', (conversationId) => {
+    socket.join(`conv_${conversationId}`);
+  });
+
+  // Send message
+  socket.on('send_message', ({ conversationId, senderId, message }) => {
+    const db = require('./db');
+    db.query(
+      'INSERT INTO messages (conversationId, senderId, message) VALUES (?, ?, ?)',
+      [conversationId, senderId, message],
+      (err, result) => {
+        if (err) return;
+        const newMessage = {
+          id: result.insertId,
+          conversationId,
+          senderId,
+          message,
+          isRead: 0,
+          createdAt: new Date(),
+        };
+        io.to(`conv_${conversationId}`).emit('receive_message', newMessage);
+
+        // สร้าง notification ให้ผู้รับ
+        db.query(
+          'SELECT employerId, seekerId FROM conversations WHERE id = ?',
+          [conversationId],
+          (err2, convRows) => {
+            if (err2 || convRows.length === 0) return;
+            const conv = convRows[0];
+            const receiverId = conv.employerId === senderId ? conv.seekerId : conv.employerId;
+
+            // ดึงชื่อผู้ส่ง
+            db.query('SELECT name FROM users WHERE id = ?', [senderId], (err3, userRows) => {
+              if (err3 || userRows.length === 0) return;
+              const senderName = userRows[0].name;
+
+              db.query(
+                'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
+                [receiverId, 'new_message', `New message from ${senderName}`]
+              );
+            });
+          }
+        );
+      }
+    );
+  });
+
+  // Typing indicator
+  socket.on('typing', ({ conversationId, senderId }) => {
+    socket.to(`conv_${conversationId}`).emit('typing', { senderId });
+  });
+
+  socket.on('stop_typing', ({ conversationId }) => {
+    socket.to(`conv_${conversationId}`).emit('stop_typing');
+  });
+
+  // Mark messages as read
+  socket.on('messages_read', ({ conversationId, userId }) => {
+    const db = require('./db');
+    db.query(
+      'UPDATE messages SET isRead = 1 WHERE conversationId = ? AND senderId != ?',
+      [conversationId, userId]
+    );
+    socket.to(`conv_${conversationId}`).emit('messages_read', { conversationId });
+  });
+
+  socket.on('disconnect', () => {});
+});
+
+httpServer.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

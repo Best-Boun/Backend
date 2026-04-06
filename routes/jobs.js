@@ -161,6 +161,18 @@ router.patch("/applications/:appId/status", (req, res) => {
         return res.status(500).json({ error: "Update failed" });
       }
       res.json({ success: true, id: req.params.appId, status });
+      db.query(
+        'SELECT ja.userId, j.title FROM job_applications ja JOIN jobs j ON ja.jobId = j.id WHERE ja.id = ?',
+        [req.params.appId],
+        (e, rows) => {
+          if (e || !rows[0]) return;
+          const { userId: seekerId, title } = rows[0];
+          db.query(
+            'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
+            [seekerId, 'status_changed', `Your application for "${title}" was updated to ${status}`]
+          );
+        }
+      );
     }
   );
 });
@@ -169,12 +181,20 @@ router.patch("/applications/:appId/status", (req, res) => {
 // DELETE APPLICATION
 // ==========================
 router.delete("/applications/:id", (req, res) => {
-  db.query("DELETE FROM job_applications WHERE id = ?", [req.params.id], (err) => {
-    if (err) {
-      console.error("DELETE APPLICATION ERROR:", err);
-      return res.status(500).json({ error: "Delete failed" });
-    }
-    res.json({ success: true });
+  // หา jobId ก่อนลบ
+  db.query("SELECT jobId FROM job_applications WHERE id = ?", [req.params.id], (err, rows) => {
+    if (err || rows.length === 0) return res.status(404).json({ error: "Not found" });
+
+    const jobId = rows[0].jobId;
+
+    db.query("DELETE FROM job_applications WHERE id = ?", [req.params.id], (err2) => {
+      if (err2) return res.status(500).json({ error: "Delete failed" });
+
+      // ลด applicant count
+      db.query("UPDATE jobs SET applicants = GREATEST(applicants - 1, 0) WHERE id = ?", [jobId]);
+
+      res.json({ success: true });
+    });
   });
 });
 
@@ -319,6 +339,46 @@ router.get("/manage", (req, res) => {
 });
 
 // ==========================
+// GET SIMILAR JOBS
+// ==========================
+router.get("/:id/similar", (req, res) => {
+  const id = req.params.id;
+
+  // ดึง skillIds ของ job นี้ก่อน
+  db.query(
+    "SELECT skillId FROM job_skills WHERE jobId = ?",
+    [id],
+    (err, skillRows) => {
+      if (err || skillRows.length === 0) return res.json([]);
+
+      const skillIds = skillRows.map(r => r.skillId);
+
+      // หา job อื่นที่มี skill overlap มากที่สุด
+      db.query(
+        `SELECT j.*, COUNT(js.skillId) AS skillOverlap
+         FROM jobs j
+         JOIN job_skills js ON j.id = js.jobId
+         WHERE j.active = 1
+           AND j.id != ?
+           AND js.skillId IN (?)
+         GROUP BY j.id
+         ORDER BY skillOverlap DESC
+         LIMIT 3`,
+        [id, skillIds],
+        (err2, result) => {
+          if (err2) return res.json([]);
+          res.json(result.map(job => ({
+            ...job,
+            requirements: parseJSON(job.requirements),
+            benefits: parseJSON(job.benefits),
+          })));
+        }
+      );
+    }
+  );
+});
+
+// ==========================
 // GET SINGLE JOB BY ID
 // ==========================
 router.get("/:id", (req, res) => {
@@ -434,6 +494,28 @@ router.post("/", verifyToken, (req, res) => {
             requirements: parseJSON(job.requirements),
             benefits: parseJSON(job.benefits),
           });
+
+          // หา seeker ที่ match ≥ 70%
+          db.query(
+            `SELECT ps.userId, SUM(CASE WHEN ps.skillId IN (
+               SELECT skillId FROM job_skills WHERE jobId = ?
+             ) THEN 1 ELSE 0 END) AS matched,
+             COUNT(js.skillId) AS total
+             FROM profile_skills ps
+             JOIN job_skills js ON js.jobId = ?
+             GROUP BY ps.userId
+             HAVING (matched / total) * 100 >= 70`,
+            [newJobId, newJobId],
+            (e, seekers) => {
+              if (e || !seekers?.length) return;
+              seekers.forEach(({ userId: seekerId }) => {
+                db.query(
+                  'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
+                  [seekerId, 'job_match', `New job "${job.title}" matches your skills!`]
+                );
+              });
+            }
+          );
         });
       });
     }
@@ -462,7 +544,12 @@ router.put("/:id", verifyToken, (req, res) => {
     requirementText,
   } = req.body;
 
-  const sql = `
+  db.query("SELECT userId FROM jobs WHERE id = ?", [id], (err, rows) => {
+    if (err) return res.status(500).json({ error: "Database error" });
+    if (!rows[0]) return res.status(404).json({ error: "Job not found" });
+    if (rows[0].userId !== req.user.id) return res.status(403).json({ error: "Forbidden" });
+
+    const sql = `
     UPDATE jobs SET
       title=?, company=?, logo=?, location=?, type=?, level=?,
       salary=?, description=?, requirements=?, benefits=?,
@@ -470,33 +557,34 @@ router.put("/:id", verifyToken, (req, res) => {
     WHERE id=?
   `;
 
-  const params = [
-    title,
-    company,
-    logo,
-    location,
-    type,
-    level,
-    salary,
-    description,
-    JSON.stringify(requirements || []),
-    JSON.stringify(benefits || []),
-    companyDescription,
-    postedDate || new Date().toISOString().split("T")[0],
-    active ?? 1,
-    id,
-  ];
+    const params = [
+      title,
+      company,
+      logo,
+      location,
+      type,
+      level,
+      salary,
+      description,
+      JSON.stringify(requirements || []),
+      JSON.stringify(benefits || []),
+      companyDescription,
+      postedDate || new Date().toISOString().split("T")[0],
+      active ?? 1,
+      id,
+    ];
 
-  db.query(sql, params, (err) => {
-    if (err) {
-      console.error("UPDATE JOB ERROR:", err);
-      return res.status(500).json({ error: "Update failed" });
-    }
+    db.query(sql, params, (err) => {
+      if (err) {
+        console.error("UPDATE JOB ERROR:", err);
+        return res.status(500).json({ error: "Update failed" });
+      }
 
-    const jobSkills = req.body.jobSkills || [];
-    upsertJobSkills(id, jobSkills, (skillErr) => {
-      if (skillErr) console.error("JOB SKILLS UPDATE ERROR:", skillErr);
-      res.json({ success: true, id });
+      const jobSkills = req.body.jobSkills || [];
+      upsertJobSkills(id, jobSkills, (skillErr) => {
+        if (skillErr) console.error("JOB SKILLS UPDATE ERROR:", skillErr);
+        res.json({ success: true, id });
+      });
     });
   });
 });
@@ -505,13 +593,19 @@ router.put("/:id", verifyToken, (req, res) => {
 // DELETE JOB
 // ==========================
 router.delete("/:id", verifyToken, (req, res) => {
-  db.query("DELETE FROM jobs WHERE id = ?", [req.params.id], (err) => {
-    if (err) {
-      console.error("DELETE JOB ERROR:", err);
-      return res.status(500).json({ error: "Delete failed" });
-    }
+  db.query("SELECT userId FROM jobs WHERE id = ?", [req.params.id], (err, rows) => {
+    if (err) return res.status(500).json({ error: "Database error" });
+    if (!rows[0]) return res.status(404).json({ error: "Job not found" });
+    if (rows[0].userId !== req.user.id) return res.status(403).json({ error: "Forbidden" });
 
-    res.json({ success: true, id: req.params.id });
+    db.query("DELETE FROM jobs WHERE id = ?", [req.params.id], (err) => {
+      if (err) {
+        console.error("DELETE JOB ERROR:", err);
+        return res.status(500).json({ error: "Delete failed" });
+      }
+
+      res.json({ success: true, id: req.params.id });
+    });
   });
 });
 
@@ -564,6 +658,23 @@ router.post("/:id/apply", (req, res) => {
 
             // Increment applicants count
             db.query("UPDATE jobs SET applicants = applicants + 1 WHERE id = ?", [jobId]);
+
+            // แจ้ง employer
+            db.query('SELECT userId, title FROM jobs WHERE id = ?', [jobId], (e, jobs) => {
+              if (e || !jobs[0]) return;
+              const { userId: employerId, title } = jobs[0];
+              db.query(
+                'SELECT name FROM profiles WHERE userId = ?',
+                [userId],
+                (e2, profiles) => {
+                  const applicantName = profiles?.[0]?.name || 'Someone';
+                  db.query(
+                    'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
+                    [employerId, 'new_applicant', `${applicantName} applied for "${title}"`]
+                  );
+                }
+              );
+            });
 
             res.json({ success: true, message: "Applied successfully" });
           }
