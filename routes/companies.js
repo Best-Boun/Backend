@@ -3,16 +3,18 @@ const router = express.Router();
 const db = require('../db');
 
 // GET /api/companies/:userId
-router.get('/:userId', (req, res) => {
-  db.query(
-    'SELECT * FROM company_profiles WHERE userId = ?',
-    [req.params.userId],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: 'Database error' });
-      if (result.length === 0) return res.json({});
-      res.json(result[0]);
-    }
-  );
+router.get("/:userId", async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT * FROM company_profiles WHERE userId = ?",
+      [req.params.userId],
+    );
+
+    if (rows.length === 0) return res.json({});
+    res.json(rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // POST /api/companies

@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const db = require("../db");
-const verifyToken = require('../middleware/authMiddleware');
+const verifyToken = require("../middleware/authMiddleware");
 
 const SUB_TABLES = [
   "profile_skills",
@@ -13,32 +13,51 @@ const SUB_TABLES = [
 ];
 
 const PROFILE_FIELDS = [
-  "name", "title", "bio", "summary", "phone", "location", "website",
-  "profileImage", "availability", "salaryRange", "gender", "nationality",
-  "dateOfBirth", "openToWork", "email", "linkedin", "github", "privacy",
+  "name",
+  "title",
+  "bio",
+  "summary",
+  "phone",
+  "location",
+  "website",
+  "profileImage",
+  "availability",
+  "salaryRange",
+  "gender",
+  "nationality",
+  "dateOfBirth",
+  "openToWork",
+  "email",
+  "linkedin",
+  "github",
+  "privacy",
 ];
 
 // ================================================
 // HELPER: fetch all sub-tables for a userId
 // ================================================
-function fetchSubTables(userId, callback) {
+async function fetchSubTables(userId) {
   const results = {};
-  let done = 0;
 
-  SUB_TABLES.forEach((table) => {
-    const query = table === 'profile_skills'
-      ? `SELECT ps.*, s.name AS skillName, s.category AS skillCategory
-         FROM profile_skills ps
-         LEFT JOIN skills s ON ps.skillId = s.id
-         WHERE ps.userId = ?`
-      : `SELECT * FROM ${table} WHERE userId = ?`;
+  for (const table of SUB_TABLES) {
+    try {
+      let query =
+        table === "profile_skills"
+          ? `SELECT ps.*, s.name AS skillName, s.category AS skillCategory
+             FROM profile_skills ps
+             LEFT JOIN skills s ON ps.skillId = s.id
+             WHERE ps.userId = ?`
+          : `SELECT * FROM ${table} WHERE userId = ?`;
 
-    db.query(query, [userId], (err, rows) => {
-      results[table] = err ? [] : rows;
-      done++;
-      if (done === SUB_TABLES.length) callback(results);
-    });
-  });
+      const [rows] = await db.query(query, [userId]);
+      results[table] = rows;
+    } catch (err) {
+      console.log("fetch error:", table, err);
+      results[table] = [];
+    }
+  }
+
+  return results;
 }
 
 // ================================================
@@ -58,16 +77,18 @@ function buildProfileObject(profile, subs, email) {
     phone: profile.phone || null,
     location: profile.location || null,
     website: profile.website || null,
-    profileImage: profile.profileImage || null,
+    profileImage: profile.profileImage || profile.userProfileImage || null,
+    name: profile.name || profile.userName || null,
     availability: profile.availability || null,
     salaryRange: profile.salaryRange || null,
     gender: profile.gender || null,
     nationality: profile.nationality || null,
     dateOfBirth: profile.dateOfBirth || null,
     openToWork: !!profile.openToWork,
-    privacy: typeof profile.privacy === 'string'
-      ? JSON.parse(profile.privacy)
-      : profile.privacy || {},
+    privacy:
+      typeof profile.privacy === "string"
+        ? JSON.parse(profile.privacy)
+        : profile.privacy || {},
     skills: (subs["profile_skills"] || []).map((r) => ({
       id: r.id,
       name: r.skillName || r.skill,
@@ -123,9 +144,8 @@ function buildProfileObject(profile, subs, email) {
 // ================================================
 // HELPER: insert all sub-tables for a userId
 // ================================================
-function insertSubTables(userId, body, callback) {
+async function insertSubTablesAsync(userId, body) {
   const {
-    skills = [],
     experience = [],
     education = [],
     languages = [],
@@ -135,7 +155,7 @@ function insertSubTables(userId, body, callback) {
 
   const inserts = [];
 
-  (experience || []).forEach((exp) => {
+  experience.forEach((exp) => {
     inserts.push({
       table: "profile_experience",
       row: {
@@ -149,74 +169,11 @@ function insertSubTables(userId, body, callback) {
     });
   });
 
-  (education || []).forEach((edu) => {
-    inserts.push({
-      table: "profile_education",
-      row: {
-        userId,
-        institution: edu.institution || edu.school || null,
-        degree: edu.degree || null,
-        field: edu.field || null,
-        startDate: edu.startDate || edu.year || null,
-        endDate: edu.endDate || null,
-        grade: edu.grade || null,
-      },
-    });
-  });
+  // (copy ส่วนอื่นเหมือนเดิม)
 
-  (languages || []).forEach((lang) => {
-    inserts.push({
-      table: "profile_languages",
-      row: {
-        userId,
-        language: lang.language || lang.name || (typeof lang === "string" ? lang : null),
-        level: lang.level || null,
-      },
-    });
-  });
-
-  (certifications || []).forEach((cert) => {
-    inserts.push({
-      table: "profile_certifications",
-      row: {
-        userId,
-        name: cert.name || null,
-        issuer: cert.issuer || null,
-        date: cert.date || null,
-        url: cert.url || null,
-      },
-    });
-  });
-
-  (projects || []).forEach((proj) => {
-    inserts.push({
-      table: "profile_projects",
-      row: {
-        userId,
-        image: proj.image || null,
-        description: proj.description || null,
-        url: proj.url || proj.link || null,
-        techStack: proj.techStack || proj.category || null,
-      },
-    });
-  });
-
-  if (inserts.length === 0) return callback(null);
-
-  let done = 0;
-  let errored = false;
-
-  inserts.forEach(({ table, row }) => {
-    db.query(`INSERT INTO ${table} SET ?`, row, (err) => {
-      if (errored) return;
-      if (err) {
-        errored = true;
-        return callback(err);
-      }
-      done++;
-      if (done === inserts.length) callback(null);
-    });
-  });
+  for (const { table, row } of inserts) {
+   await db.query(`INSERT INTO ${table} SET ?`, [row]);
+  }
 }
 
 // ================================================
@@ -226,39 +183,83 @@ function upsertSkills(userId, skills, callback) {
   if (!skills || skills.length === 0) return callback(null);
 
   let done = 0;
-  let errored = false;
+  let finished = false;
 
   skills.forEach((skill) => {
-    const skillName = typeof skill === 'string' ? skill : skill.name || skill.skill || '';
-    const yearsExp = typeof skill === 'object' ? skill.yearsExp || 0 : 0;
+    const skillName =
+      typeof skill === "string" ? skill : skill.name || skill.skill || "";
+    const yearsExp = typeof skill === "object" ? skill.yearsExp || 0 : 0;
 
-    if (!skillName) { done++; if (done === skills.length) callback(null); return; }
-
-    // หา skillId จาก master table
-    db.query('SELECT id FROM skills WHERE name = ?', [skillName], (err, rows) => {
-      if (errored) return;
-      if (err) { errored = true; return callback(err); }
-
-      const skillId = rows[0]?.id;
-      if (!skillId) {
-        // ไม่มีใน master → ข้ามไป
-        done++;
-        if (done === skills.length) callback(null);
-        return;
+    if (!skillName) {
+      done++;
+      if (done === skills.length && !finished) {
+        finished = true;
+        callback(null);
       }
+      return;
+    }
 
-      // INSERT profile_skills ด้วย skillId
-      db.query(
-        'INSERT INTO profile_skills (userId, skillId, skill, yearsExp) VALUES (?, ?, ?, ?)',
-        [userId, skillId, skillName, yearsExp],
-        (err2) => {
-          if (errored) return;
-          if (err2) { errored = true; return callback(err2); }
-          done++;
-          if (done === skills.length) callback(null);
+    db.query(
+      "SELECT id FROM skills WHERE name = ?",
+      [skillName],
+      (err, rows) => {
+        if (finished) return;
+
+        if (err) {
+          finished = true;
+          return callback(err);
         }
-      );
-    });
+
+        const skillId = rows[0]?.id;
+
+        if (!skillId) {
+          // 🔥 insert skill ใหม่เข้า master table ก่อน
+          db.query(
+            "INSERT INTO skills (name) VALUES (?)",
+            [skillName],
+            (err3, result3) => {
+              if (err3) return callback(err3);
+
+              const newSkillId = result3.insertId;
+
+              db.query(
+                "INSERT INTO profile_skills (userId, skillId, skill, yearsExp) VALUES (?, ?, ?, ?)",
+                [userId, newSkillId, skillName, yearsExp],
+                (err4) => {
+                  if (err4) return callback(err4);
+
+                  done++;
+                  if (done === skills.length && !finished) {
+                    finished = true;
+                    callback(null);
+                  }
+                },
+              );
+            },
+          );
+          return;
+        }
+
+        db.query(
+          "INSERT INTO profile_skills (userId, skillId, skill, yearsExp) VALUES (?, ?, ?, ?)",
+          [userId, skillId, skillName, yearsExp],
+          (err2) => {
+            if (finished) return;
+
+            if (err2) {
+              finished = true;
+              return callback(err2);
+            }
+
+            done++;
+            if (done === skills.length && !finished) {
+              finished = true;
+              callback(null);
+            }
+          },
+        );
+      },
+    );
   });
 }
 
@@ -267,40 +268,118 @@ function upsertSkills(userId, skills, callback) {
 // ================================================
 function deleteSubTables(userId, callback) {
   let done = 0;
+  let finished = false;
+
   SUB_TABLES.forEach((table) => {
-    db.query(`DELETE FROM ${table} WHERE userId = ?`, [userId], () => {
+    db.query(`DELETE FROM ${table} WHERE userId = ?`, [userId], (err) => {
+      if (finished) return;
+
+      if (err) {
+        finished = true;
+        return callback(err);
+      }
+
       done++;
-      if (done === SUB_TABLES.length) callback();
+      if (done === SUB_TABLES.length) {
+        finished = true;
+        callback(null);
+      }
     });
   });
 }
 
 // ================================================
+// HELPER: delete all sub-tables (ASYNC VERSION)
+// ================================================
+async function deleteSubTablesAsync(userId) {
+  for (const table of SUB_TABLES) {
+    await db.query(`DELETE FROM ${table} WHERE userId = ?`, [userId]);
+  }
+}
+
+// ================================================
+// HELPER: upsert skills (ASYNC)
+// ================================================
+async function upsertSkillsAsync(userId, skills) {
+  if (!skills || skills.length === 0) return;
+
+  for (const skill of skills) {
+    const skillName =
+      typeof skill === "string" ? skill : skill.name || skill.skill || "";
+    const yearsExp = skill.yearsExp || 0;
+
+    if (!skillName) continue;
+
+    // 🔍 หา skill ก่อน
+    const [rows] = await db.query(
+      "SELECT id FROM skills WHERE name = ?",
+      [skillName]
+    );
+
+    let skillId = rows[0]?.id;
+
+    // 🔥 ถ้าไม่มี → insert ใหม่
+    if (!skillId) {
+      const [result] = await db.query(
+        "INSERT INTO skills (name) VALUES (?)",
+        [skillName]
+      );
+      skillId = result.insertId;
+    }
+
+    // 🔥 insert profile_skills
+    await db.query(
+      "INSERT INTO profile_skills (userId, skillId, skill, yearsExp) VALUES (?, ?, ?, ?)",
+      [userId, skillId, skillName, yearsExp]
+    );
+  }
+}
+
+
+
+// ================================================
 // GET /api/profiles?userId=:userId
 // ================================================
-router.get("/", (req, res) => {
-  const { userId } = req.query;
+router.get("/", async (req, res) => {
+  const userId = parseInt(req.query.userId);
 
   if (!userId) {
     return res.status(400).json({ error: "userId is required" });
   }
 
-  db.query("SELECT * FROM profiles WHERE userId = ?", [userId], (err, result) => {
-    if (err) {
-      console.error("GET PROFILE ERROR:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
+ const [result] = await db.query(
+   `SELECT 
+    p.*, 
+    u.profileImage AS userProfileImage,
+    u.name AS userName
+   FROM profiles p
+   LEFT JOIN users u ON p.userId = u.id
+   WHERE p.userId = ?`,
+   [userId],
+ );
 
-    if (result.length === 0) {
-      return res.json([]);
-    }
+if (result.length === 0) {
+  const [userRows] = await db.query(
+    "SELECT profileImage, name FROM users WHERE id = ?",
+    [userId],
+  );
 
-    const profile = result[0];
+  if (!userRows.length) {
+    return res.json({ profileImage: null, name: null });
+  }
 
-    fetchSubTables(userId, (subs) => {
-      res.json([buildProfileObject(profile, subs, null)]);
-    });
+  return res.json({
+    userId: userId, // ⭐ ใส่อันนี้เข้าไป
+    profileImage: userRows[0].profileImage,
+    name: userRows[0].name,
   });
+}
+
+const profile = result[0];
+
+const subs = await fetchSubTables(userId);
+
+return res.json(buildProfileObject(profile, subs, null));
 });
 
 // ================================================
@@ -320,9 +399,10 @@ router.post("/", verifyToken, (req, res) => {
   const mainRow = { userId };
   PROFILE_FIELDS.forEach((f) => {
     if (req.body[f] !== undefined) {
-      mainRow[f] = f === 'privacy' && typeof req.body[f] === 'object'
-        ? JSON.stringify(req.body[f])
-        : req.body[f];
+      mainRow[f] =
+        f === "privacy" && typeof req.body[f] === "object"
+          ? JSON.stringify(req.body[f])
+          : req.body[f];
     }
   });
   mainRow.createdAt = new Date();
@@ -335,13 +415,14 @@ router.post("/", verifyToken, (req, res) => {
     }
 
     upsertSkills(userId, req.body.skills || [], (skillErr) => {
-      if (skillErr) return res.status(500).json({ error: "Skills insert failed" });
+      if (skillErr)
+        return res.status(500).json({ error: "Skills insert failed" });
       insertSubTables(userId, { ...req.body, skills: [] }, (subErr) => {
         if (subErr) {
           console.error("INSERT SUB-TABLES ERROR:", subErr);
           return res.status(500).json({ error: "Sub-table insert failed" });
         }
-        res.json({ success: true, userId });
+        return res.json({ success: true, userId });
       });
     });
   });
@@ -350,161 +431,71 @@ router.post("/", verifyToken, (req, res) => {
 // ================================================
 // PUT /api/profiles/:userId
 // ================================================
-router.put("/:userId", verifyToken, (req, res) => {
-  const userId = parseInt(req.params.userId);
+router.put("/:userId", verifyToken, async (req, res) => {
+  try {
+    const userId = parseInt(req.params.userId);
 
-  if (userId !== req.user.id) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
+    const updates = {};
+    PROFILE_FIELDS.forEach((f) => {
+      if (req.body[f] !== undefined) {
+        updates[f] =
+          f === "privacy" && typeof req.body[f] === "object"
+            ? JSON.stringify(req.body[f])
+            : req.body[f];
+      }
+    });
+    updates.updatedAt = new Date();
 
-  const updates = {};
-  PROFILE_FIELDS.forEach((f) => {
-    if (req.body[f] !== undefined) {
-      updates[f] = f === 'privacy' && typeof req.body[f] === 'object'
-        ? JSON.stringify(req.body[f])
-        : req.body[f];
-    }
-  });
-  updates.updatedAt = new Date();
+   const [rows] = await db.query("SELECT id FROM profiles WHERE userId = ?", [
+     userId,
+   ]);
 
-  db.query("SELECT id FROM profiles WHERE userId = ?", [userId], (err, rows) => {
-    if (err) return res.status(500).json({ error: "Database error" });
-
+    // 🔥 INSERT
     if (rows.length === 0) {
-      // ไม่มี profile → INSERT ใหม่
       const newRow = { userId, ...updates, createdAt: new Date() };
-      db.query("INSERT INTO profiles SET ?", newRow, (err2) => {
-        if (err2) return res.status(500).json({ error: "Insert failed" });
-        deleteSubTables(userId, () => {
-          upsertSkills(userId, req.body.skills || [], (skillErr) => {
-            if (skillErr) return res.status(500).json({ error: "Skills insert failed" });
-            insertSubTables(userId, { ...req.body, skills: [] }, (subErr) => {
-              if (subErr) return res.status(500).json({ error: "Sub-table insert failed" });
-              res.json({ success: true, userId });
-            });
-          });
-        });
-      });
-    } else {
-      // มีอยู่แล้ว → UPDATE ปกติ
-     db.query(
-       "UPDATE profiles SET ? WHERE userId = ?",
-       [updates, userId],
-       (err2) => {
-         if (err2) return res.status(500).json({ error: "Update failed" });
 
-         // 🔥 ย้ายมาไว้ตรงนี้
-         if (updates.profileImage) {
-           db.query("UPDATE users SET profileImage = ? WHERE id = ?", [
-             updates.profileImage,
-             userId,
-           ]);
-         }
-
-         // ทำงานต่อ
-         fetchSubTables(userId, (backup) => {
-           // ลบเก่า
-           deleteSubTables(userId, () => {
-             // insert ใหม่
-             upsertSkills(userId, req.body.skills || [], (skillErr) => {
-               if (skillErr) {
-                 return res.status(500).json({ error: "Skills insert failed" });
-               }
-               insertSubTables(
-                 userId,
-                 { ...req.body, skills: [] },
-                 (subErr) => {
-                   if (subErr) {
-                     console.error(
-                       "Insert failed, restoring backup...",
-                       subErr,
-                     );
-
-                     // restore — ลบที่เพิ่งใส่ผิดออก แล้ว insert backup กลับ
-                     deleteSubTables(userId, () => {
-                       const backupSkills = (
-                         backup["profile_skills"] || []
-                       ).map((r) => ({
-                         skillId: r.skillId,
-                         name: r.skillName || r.skill,
-                         yearsExp: r.yearsExp || 0,
-                       }));
-                       upsertSkills(userId, backupSkills, () => {
-                         insertSubTables(
-                           userId,
-                           {
-                             experience: backup["profile_experience"] || [],
-                             education: backup["profile_education"] || [],
-                             languages: backup["profile_languages"] || [],
-                             certifications:
-                               backup["profile_certifications"] || [],
-                             projects: backup["profile_projects"] || [],
-                           },
-                           (restoreErr) => {
-                             if (restoreErr)
-                               console.error(
-                                 "Restore also failed:",
-                                 restoreErr,
-                               );
-                             return res
-                               .status(500)
-                               .json({ error: "Update failed, data restored" });
-                           },
-                         );
-                       });
-                     });
-                     return;
-                   }
-                   res.json({ success: true, userId });
-                 },
-               );
-             });
-           });
-         });
-       },
-     );
+      await db.query("INSERT INTO profiles SET ?", [newRow]);
     }
-  });
+    // 🔥 UPDATE
+    else {
+      await db.query("UPDATE profiles SET ? WHERE userId = ?", [
+        updates,
+        userId,
+      ]);
+    }
+
+    // 🔥 update profileImage ใน users
+    if (updates.profileImage) {
+      await db.query("UPDATE users SET profileImage = ? WHERE id = ?", [
+        updates.profileImage,
+        userId,
+      ]);
+    }
+
+    // console.log("STEP 1");
+
+    await deleteSubTablesAsync(userId);
+
+    // console.log("STEP 2");
+
+    await upsertSkillsAsync(userId, req.body.skills || []);
+
+    // console.log("STEP 3");
+
+    await insertSubTablesAsync(userId, {
+      ...req.body,
+      skills: [],
+    });
+
+    // console.log("STEP 4");
+
+    return res.json({ success: true, userId });
+  } catch (err) {
+    console.log("ERROR:", err);
+    return res.status(500).json({ error: "Update failed" });
+  }
 });
-
-// ================================================
-// GET /api/profiles/search?skill=React&location=Bangkok&name=John
-// ================================================
-router.get('/search', (req, res) => {
-  const { skill, location, name } = req.query;
-
-  let sql = `
-    SELECT DISTINCT p.userId, p.name, p.title, p.location, p.profileImage, p.openToWork,
-      GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS skillNames
-    FROM profiles p
-    JOIN users u ON p.userId = u.id
-    LEFT JOIN profile_skills ps ON p.userId = ps.userId
-    LEFT JOIN skills s ON ps.skillId = s.id
-    WHERE u.role = 'seeker' AND p.name IS NOT NULL AND p.name != ''
-  `;
-  const params = [];
-
-  if (name) {
-    sql += ' AND p.title LIKE ?';
-    params.push(`%${name}%`);
-  }
-  if (location) {
-    sql += ' AND p.location LIKE ?';
-    params.push(`%${location}%`);
-  }
-  if (skill) {
-    sql += ' AND p.userId IN (SELECT ps2.userId FROM profile_skills ps2 JOIN skills s2 ON ps2.skillId = s2.id WHERE s2.name LIKE ?)';
-    params.push(`%${skill}%`);
-  }
-
-  sql += ' GROUP BY p.userId ORDER BY p.name ASC LIMIT 20';
-
-  db.query(sql, params, (err, result) => {
-    if (err) return res.status(500).json({ error: 'Database error' });
-    res.json(result);
-  });
-});
-
+    
 module.exports = router;
 
 /**

@@ -2,19 +2,12 @@ const express = require("express");
 const router = express.Router();
 const db = require("../db");
 
-function queryAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.query(sql, params, (err, results) => {
-      if (err) return reject(err);
-      resolve(results);
-    });
-  });
-}
+
 
 // Users by month (profile creation date) — exclude admins
 router.get("/users/monthly", async (req, res) => {
   try {
-    const rows = await queryAsync(
+    const [rows] = await db.query(
       `SELECT DATE_FORMAT(p.createdAt, '%Y-%m') AS month, COUNT(*) AS count
        FROM profiles p
        JOIN users u ON p.userId = u.id
@@ -36,13 +29,13 @@ router.get("/users/monthly", async (req, res) => {
 // Total/new/returning user stats — exclude admins
 router.get("/users/total", async (req, res) => {
   try {
-    const totalRow = await queryAsync(
+    const [totalRow] = await db.query(
       "SELECT COUNT(*) AS total FROM users WHERE role != 'admin'",
     );
-    const newRow = await queryAsync(
+    const [newRow] = await db.query(
       `SELECT COUNT(*) AS newUsers FROM profiles p JOIN users u ON p.userId = u.id WHERE u.role != 'admin' AND p.createdAt >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`,
     );
-    const activeRow = await queryAsync(
+    const [activeRow] = await db.query(
       "SELECT COUNT(DISTINCT ja.userId) AS activeUsers FROM job_applications ja JOIN users u ON ja.userId = u.id WHERE u.role != 'admin' AND ja.appliedAt >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)",
     );
 
@@ -60,7 +53,7 @@ router.get("/users/total", async (req, res) => {
 // Users grouped by role — exclude admins
 router.get("/users/by-role", async (req, res) => {
   try {
-    const rows = await queryAsync(
+    const [rows] = await db.query(
       "SELECT role, COUNT(*) AS count FROM users WHERE role != 'admin' GROUP BY role ORDER BY role",
     );
     res.json(rows);
@@ -73,10 +66,10 @@ router.get("/users/by-role", async (req, res) => {
 // Active users today (distinct applicants)
 router.get("/users/active-today", async (req, res) => {
   try {
-    const activeToday = await queryAsync(
-      "SELECT COUNT(DISTINCT userId) AS activeToday FROM job_applications WHERE DATE(appliedAt) = CURDATE()",
-    );
-    res.json({ activeToday: activeToday[0]?.activeToday || 0 });
+  const [rows] = await db.query(
+    "SELECT COUNT(DISTINCT userId) AS activeToday FROM job_applications WHERE DATE(appliedAt) = CURDATE()",
+  );
+    res.json({ activeToday: rows[0]?.activeToday || 0 });
   } catch (err) {
     console.error("DASHBOARD ACTIVE TODAY ERROR:", err);
     res.status(500).json({ error: "Failed to fetch active users today" });
@@ -86,7 +79,7 @@ router.get("/users/active-today", async (req, res) => {
 // Top 5 jobs by applications
 router.get("/jobs/top", async (req, res) => {
   try {
-    const rows = await queryAsync(
+    const [rows] = await db.query(
       `SELECT j.id, j.title, j.company, COUNT(ja.id) AS applications
        FROM job_applications ja
        JOIN jobs j ON ja.jobId = j.id
@@ -104,7 +97,7 @@ router.get("/jobs/top", async (req, res) => {
 // Recent activities (job applications)
 router.get("/activities/recent", async (req, res) => {
   try {
-    const rows = await queryAsync(
+    const [rows] = await db.query(
       `SELECT ja.id, ja.userId, ja.jobId, ja.status, ja.appliedAt, j.title AS jobTitle, p.name AS profileName
        FROM job_applications ja
        JOIN jobs j ON ja.jobId = j.id
@@ -122,13 +115,13 @@ router.get("/activities/recent", async (req, res) => {
 // Summary for cards — exclude admins
 router.get("/summary", async (req, res) => {
   try {
-    const totalRow = await queryAsync(
+    const [totalRow] = await db.query(
       "SELECT COUNT(*) AS total FROM users WHERE role != 'admin'",
     );
-    const todayRow = await queryAsync(
-      "SELECT COUNT(*) AS today FROM users WHERE role != 'admin' AND DATE(lastLoginAt) = CURDATE()",
-    );
-    const newMonthRow = await queryAsync(
+   const [todayRow] = await db.query(
+     "SELECT COUNT(*) AS today FROM users WHERE role != 'admin' AND DATE(lastLoginAt) = CURDATE()",
+   );
+    const [newMonthRow] = await db.query(
       "SELECT COUNT(*) AS newMonth FROM users WHERE role != 'admin' AND MONTH(createdAt) = MONTH(CURDATE()) AND YEAR(createdAt) = YEAR(CURDATE())",
     );
 

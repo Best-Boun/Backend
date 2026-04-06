@@ -20,14 +20,19 @@ const isAdmin = require("../middleware/isAdmin");
  *       200:
  *         description: success
  */
-router.get("/", verifyToken, isAdmin, (req, res) => {
-  const sql =
-    "SELECT id, name AS username, email, role, IFNULL(isBanned, 0) AS isBanned FROM users";
+router.get("/", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const sql = `
+      SELECT id, name AS username, email, role, IFNULL(isBanned, 0) AS isBanned 
+      FROM users
+    `;
 
-  db.query(sql, (err, results) => {
-    if (err) return res.status(500).json(err);
+    const [results] = await db.query(sql);
     res.json(results);
-  });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // ==========================
@@ -45,19 +50,24 @@ router.get("/", verifyToken, isAdmin, (req, res) => {
  *       200:
  *         description: success
  */
-router.get("/me", verifyToken, (req, res) => {
-  const sql = `
-    SELECT id, name AS username, email, role, profileImage
-    FROM users
-    WHERE id = ?
-  `;
+router.get("/me", verifyToken, async (req, res) => {
+  try {
+    const sql = `
+      SELECT id, name AS username, email, role, profileImage
+      FROM users
+      WHERE id = ?
+    `;
 
-  db.query(sql, [req.user.id], (err, result) => {
-    if (err) return res.status(500).json(err);
-    if (!result[0]) return res.status(404).json({ message: "User not found" });
+    const [result] = await db.query(sql, [req.user.id]);
+
+    if (!result[0]) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
     res.json(result[0]);
-  });
+  } catch (err) {
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // ── helpers (copied from profiles.js) ──
@@ -70,25 +80,29 @@ const SUB_TABLES = [
   "profile_projects",
 ];
 
-function fetchSubTables(userId, callback) {
+const fetchSubTables = async (userId) => {
   const results = {};
-  let done = 0;
 
-  SUB_TABLES.forEach((table) => {
-    const query = table === 'profile_skills'
-      ? `SELECT ps.*, s.name AS skillName, s.category AS skillCategory
-         FROM profile_skills ps
-         LEFT JOIN skills s ON ps.skillId = s.id
-         WHERE ps.userId = ?`
-      : `SELECT * FROM ${table} WHERE userId = ?`;
+  for (const table of SUB_TABLES) {
+    try {
+      const query =
+        table === "profile_skills"
+          ? `SELECT ps.*, s.name AS skillName, s.category AS skillCategory
+             FROM profile_skills ps
+             LEFT JOIN skills s ON ps.skillId = s.id
+             WHERE ps.userId = ?`
+          : `SELECT * FROM ${table} WHERE userId = ?`;
 
-    db.query(query, [userId], (err, rows) => {
-      results[table] = err ? [] : rows;
-      done++;
-      if (done === SUB_TABLES.length) callback(results);
-    });
-  });
-}
+      const [rows] = await db.query(query, [userId]);
+      results[table] = rows;
+    } catch (err) {
+      console.error("❌ TABLE ERROR:", table, err.message);
+      results[table] = []; // 🔥 กันค้าง
+    }
+  }
+
+  return results;
+};
 
 function buildProfileObject(profile, subs, email) {
   return {
@@ -216,21 +230,46 @@ function buildProfileObject(profile, subs, email) {
  *       403:
  *         description: Admin เท่านั้น
  */
-router.put('/:id', verifyToken, isAdmin, (req, res) => {
-  const { id } = req.params;
-  const { role, isBanned } = req.body;
-  const fields = [];
-  const values = [];
-  if (role !== undefined) { fields.push('role = ?'); values.push(role); }
-  if (isBanned !== undefined) { fields.push('isBanned = ?'); values.push(isBanned ? 1 : 0); }
-  if (fields.length === 0) return res.status(400).json({ message: 'No fields to update' });
-  values.push(id);
-  db.query(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`, values, (err, result) => {
-    if (err) return res.status(500).json(err);
-    if (result.affectedRows === 0) return res.status(404).json({ message: 'User not found' });
-    res.json({ message: 'Updated' });
+
+  router.put("/:id", verifyToken, isAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { role, isBanned } = req.body;
+
+      const fields = [];
+      const values = [];
+
+      if (role !== undefined) {
+        fields.push("role = ?");
+        values.push(role);
+      }
+
+      if (isBanned !== undefined) {
+        fields.push("isBanned = ?");
+        values.push(isBanned ? 1 : 0);
+      }
+
+      if (fields.length === 0) {
+        return res.status(400).json({ message: "No fields to update" });
+      }
+
+      values.push(id);
+
+      const [result] = await db.query(
+        `UPDATE users SET ${fields.join(", ")} WHERE id = ?`,
+        values,
+      );
+
+      if (result.affectedRows === 0) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      res.json({ message: "Updated" });
+    } catch (err) {
+      res.status(500).json({ error: "Update failed" });
+    }
   });
-});
+
 
 // ==========================
   // DELETE /api/users/:id  (admin delete)
@@ -266,34 +305,42 @@ router.put('/:id', verifyToken, isAdmin, (req, res) => {
  *       403:
  *         description: Admin เท่านั้น
  */
-router.delete('/:id', verifyToken, isAdmin, (req, res) => {
-  const { id } = req.params;
+router.delete("/:id", verifyToken, isAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
 
-  const dependentTables = [
-    'profile_skills', 'profile_experience', 'profile_education',
-    'profile_languages', 'profile_certifications', 'profile_projects',
-    'profiles', 'likes', 'job_applications', 'posts', 'jobs', 'company_profiles'
-  ];
+    const dependentTables = [
+      "profile_skills",
+      "profile_experience",
+      "profile_education",
+      "profile_languages",
+      "profile_certifications",
+      "profile_projects",
+      "profiles",
+      "likes",
+      "job_applications",
+      "posts",
+      "jobs",
+      "company_profiles",
+    ];
 
-  // ลบ dependent records ทีละตาราง แล้วค่อยลบ user
-  let idx = 0;
-  const deleteNext = () => {
-    if (idx >= dependentTables.length) {
-      db.query('DELETE FROM users WHERE id = ?', [id], (err, result) => {
-        if (err) return res.status(500).json({ message: 'Delete user failed', error: err.message });
-        if (result.affectedRows === 0) return res.status(404).json({ message: 'User not found' });
-        return res.json({ message: 'Deleted' });
-      });
-      return;
+    // ลบทุกตาราง
+    for (const table of dependentTables) {
+      await db.query(`DELETE FROM ${table} WHERE userId = ?`, [id]);
     }
-    const table = dependentTables[idx++];
-    db.query(`DELETE FROM ${table} WHERE userId = ?`, [id], (err) => {
-      if (err) return res.status(500).json({ message: `Delete from ${table} failed`, error: err.message });
-      deleteNext();
-    });
-  };
 
-  deleteNext();
+    // ลบ user
+    const [result] = await db.query("DELETE FROM users WHERE id = ?", [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.json({ message: "Deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Delete failed" });
+  }
 });
 
 /**
@@ -343,29 +390,36 @@ router.delete('/:id', verifyToken, isAdmin, (req, res) => {
  *         description: Database error
  */
 // GET /api/users/:userId/profile
-router.get('/:userId/profile', (req, res) => {
-  const { userId } = req.params;
+router.get("/:userId/profile", async (req, res) => {
+  try {
+    const { userId } = req.params;
 
-  db.query('SELECT * FROM users WHERE id = ?', [userId], (err, userResult) => {
-    if (err) return res.status(500).json({ error: 'Database error' });
+    const [userResult] = await db.query("SELECT * FROM users WHERE id = ?", [
+      userId,
+    ]);
 
     const user = userResult[0] || null;
     const email = user ? user.email : null;
     const userName = user ? user.name : null;
 
-    db.query('SELECT * FROM profiles WHERE userId = ?', [userId], (err2, profResult) => {
-      if (err2) return res.status(500).json({ error: 'Database error' });
+    const [profResult] = await db.query(
+      "SELECT * FROM profiles WHERE userId = ?",
+      [userId],
+    );
 
-      if (profResult.length === 0) {
-        return res.json({ userId, name: userName, email });
-      }
+    if (profResult.length === 0) {
+      return res.json({ userId, name: userName, email });
+    }
 
-      const profile = profResult[0];
-      fetchSubTables(userId, (subs) => {
-        res.json(buildProfileObject(profile, subs, email));
-      });
-    });
-  });
+    const profile = profResult[0];
+
+    const subs = await fetchSubTables(userId);
+
+    res.json(buildProfileObject(profile, subs, email));
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 module.exports = router;

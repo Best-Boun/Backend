@@ -1,0 +1,90 @@
+const express = require("express");
+const router = express.Router();
+const db = require("../db");
+const verifyToken = require("../middleware/authMiddleware");
+
+// ================= GET COMMENTS =================
+router.get("/:postId", async (req, res) => {
+  try {
+    const postId = req.params.postId;
+
+    const sql = `
+      SELECT comments.*, users.name AS username, users.profileImage
+      FROM comments
+      JOIN users ON comments.userId = users.id
+      WHERE postId = ?
+      ORDER BY createdAt ASC
+    `;
+
+    const [result] = await db.query(sql, [postId]);
+
+    res.json(result);
+  } catch (err) {
+    console.error("GET COMMENTS ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// ================= CREATE COMMENT =================
+router.post("/", verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { postId, text } = req.body;
+
+    // กันค่า null / ว่าง
+    if (!text || !text.trim()) {
+      return res.status(400).json({ message: "Empty comment" });
+    }
+
+    if (!postId) {
+      return res.status(400).json({ message: "PostId required" });
+    }
+
+    const sql = `
+      INSERT INTO comments (postId, userId, text, createdAt)
+      VALUES (?, ?, ?, NOW())
+    `;
+
+    await db.query(sql, [postId, userId, text]);
+
+    res.json({ message: "Comment added" });
+  } catch (err) {
+    console.error("CREATE COMMENT ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// ================= DELETE COMMENT =================
+router.delete("/:id", verifyToken, async (req, res) => {
+  try {
+    const commentId = req.params.id;
+    const userId = req.user.id;
+    const role = req.user.role;
+
+    // หา comment ก่อน
+    const [result] = await db.query("SELECT * FROM comments WHERE id = ?", [
+      commentId,
+    ]);
+
+    if (result.length === 0) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    const comment = result[0];
+
+    // เช็คสิทธิ์
+    if (comment.userId !== userId && role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    // ลบ
+    await db.query("DELETE FROM comments WHERE id = ?", [commentId]);
+
+    res.json({ message: "Comment deleted" });
+  } catch (err) {
+    console.error("DELETE COMMENT ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+module.exports = router;

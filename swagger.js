@@ -14,12 +14,7 @@ const options = {
       },
     ],
 
-    // 🔥 เพิ่มตรงนี้
-    security: [
-      {
-        bearerAuth: [],
-      },
-    ],
+   
 
     components: {
       securitySchemes: {

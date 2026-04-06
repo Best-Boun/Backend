@@ -12,6 +12,7 @@ const jwt = require("jsonwebtoken");
  * /api/auth/register:
  *   post:
  *     summary: สมัครสมาชิก
+ *     security: []
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -41,55 +42,44 @@ const jwt = require("jsonwebtoken");
  *         description: Database error
  */
 router.post("/register", async (req, res) => {
-  const { name, email, password, role } = req.body;
-
-  const VALID_ROLES = ["seeker", "employer"];
-  const userRole = role || "seeker";
-
-  if (!VALID_ROLES.includes(userRole)) {
-    return res
-      .status(400)
-      .json({ message: "role must be 'seeker' or 'employer'" });
-  }
+  console.log("🔥 REGISTER START");
 
   try {
-    // ✅ 🔥 เช็ค email ซ้ำก่อน
-    db.query(
-      "SELECT * FROM users WHERE email = ?",
-      [email],
-      async (err, result) => {
-        if (err) return res.status(500).json(err);
+    const { name, email, password, role } = req.body;
 
-        if (result.length > 0) {
-          return res.status(400).json({
-            message: "Email already exists",
-          });
-        }
+    const VALID_ROLES = ["seeker", "employer"];
+    const userRole = role || "seeker";
 
-        // 👉 ค่อย hash หลังจากเช็คแล้ว
-        const hash = await bcrypt.hash(password, 10);
+    if (!VALID_ROLES.includes(userRole)) {
+      return res
+        .status(400)
+        .json({ message: "role must be 'seeker' or 'employer'" });
+    }
 
-        const sql =
-          "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)";
+    // 🔥 ใช้ await แบบเดียวกับ login
+    const [result] = await db.query("SELECT * FROM users WHERE email = ?", [
+      email,
+    ]);
 
-       db.query(sql, [name, email, hash, userRole], (err) => {
-         if (err) {
-           // 🔥 handle email ซ้ำ
-           if (err.code === "ER_DUP_ENTRY") {
-             return res.status(409).json({
-               message: "Email already exists",
-             });
-           }
+    if (result.length > 0) {
+      return res.status(400).json({
+        message: "Email already exists",
+      });
+    }
 
-           return res.status(500).json(err);
-         }
+    const hash = await bcrypt.hash(password, 10);
 
-         res.json({ message: "User registered" });
-       });
-      },
+    await db.query(
+      "INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)",
+      [name, email, hash, userRole],
     );
+
+    console.log("✅ REGISTER SUCCESS");
+
+    res.json({ message: "User registered" });
   } catch (err) {
-    res.status(500).json(err);
+    console.log("❌ REGISTER ERROR:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -101,6 +91,7 @@ router.post("/register", async (req, res) => {
  * /api/auth/login:
  *   post:
  *     summary: Login
+ *     security: []
  *     tags: [Auth]
  *     requestBody:
  *       required: true
@@ -149,16 +140,9 @@ router.post("/register", async (req, res) => {
  *                       type: string
  *       400:
  *         description: User not found หรือ Wrong password
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message:
- *                   type: string
- *                   example: Wrong password
  *       403:
- *         description: บัญชีถูกแบน ไม่สามารถเข้าสู่ระบบได้
+ *         description: บัญชีถูกแบน
+ *
  *         content:
  *           application/json:
  *             schema:
@@ -171,13 +155,16 @@ router.post("/register", async (req, res) => {
  *                   type: boolean
  *                   example: true
  */
-router.post("/login", (req, res) => {
-  const { email, password } = req.body;
+router.post("/login", async (req, res) => {
+  console.log("🔥 LOGIN START");
 
-  const sql = "SELECT * FROM users WHERE email = ?";
+  try {
+    const { email, password } = req.body;
 
-  db.query(sql, [email], async (err, result) => {
-    if (err) return res.status(500).json(err);
+    const sql = "SELECT * FROM users WHERE email = ?";
+    const [result] = await db.query(sql, [email]); // ✅ FIX ตรงนี้
+
+    console.log("RESULT:", result);
 
     if (result.length === 0) {
       return res.status(400).json({
@@ -190,12 +177,19 @@ router.post("/login", (req, res) => {
     // 🚫 เช็คว่าถูกแบนหรือไม่
     if (user.isBanned) {
       return res.status(403).json({
-        message: "Your account has been banned. Please contact the administrator.",
+        message:
+          "Your account has been banned. Please contact the administrator.",
         banned: true,
       });
     }
 
-    const match = await bcrypt.compare(password, user.password);
+    let match = false;
+
+    if (user.password.startsWith("$2b$")) {
+      match = await bcrypt.compare(password, user.password);
+    } else {
+      match = password === user.password;
+    }
 
     if (!match) {
       return res.status(400).json({
@@ -203,13 +197,13 @@ router.post("/login", (req, res) => {
       });
     }
 
-    // 🔑 สร้าง JWT Token
     const token = jwt.sign({ id: user.id, role: user.role }, "mysecretkey", {
       expiresIn: "1d",
     });
 
-    // บันทึกเวลา login ล่าสุด
-    db.query("UPDATE users SET lastLoginAt = NOW() WHERE id = ?", [user.id]);
+    await db.query("UPDATE users SET lastLoginAt = NOW() WHERE id = ?", [
+      user.id,
+    ]);
 
     res.json({
       message: "Login success",
@@ -222,9 +216,13 @@ router.post("/login", (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
+        profileImage: user.profileImage,
       },
     });
-  });
+  } catch (err) {
+    console.log("❌ LOGIN ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 module.exports = router;
