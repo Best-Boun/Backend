@@ -26,16 +26,20 @@ if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath);
 }
 
-// =======================
-// MULTER CONFIG
-// =======================
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadPath);
-  },
-  filename: (req, file, cb) => {
-    const uniqueName = Date.now() + "-" + file.originalname;
-    cb(null, uniqueName);
+const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const cloudinary = require("cloudinary").v2;
+
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const storage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: "ads",
+    transformation: [{ quality: "auto", fetch_format: "auto" }],
   },
 });
 
@@ -103,7 +107,7 @@ router.post(
     try {
       const { name, description, active } = req.body;
 
-      const image = req.file ? req.file.filename : req.body.image || null;
+      const image = req.file ? req.file.path || req.file.secure_url : null;
 
       const ad = {
         name: name || "New Ad",
@@ -152,26 +156,11 @@ router.put(
       let newImage;
 
       if (req.file) {
-        // 🔥 มีอัปโหลดใหม่
-        newImage = req.file.filename;
-
-        // 🔥 ลบรูปเก่า
-        if (oldImage) {
-          const oldPath = path.join(__dirname, "../upload", oldImage);
-          fs.unlink(oldPath, (err) => {
-            if (err) console.log("ลบรูปเก่าไม่สำเร็จ:", err.message);
-          });
-        }
+        console.log("FILE:", req.file);
+        newImage = req.file.path || req.file.secure_url;
       } else if (req.body.image === "") {
         // 🔥 กด Delete Image
         newImage = null;
-
-        if (oldImage) {
-          const oldPath = path.join(__dirname, "../upload", oldImage);
-          fs.unlink(oldPath, (err) => {
-            if (err) console.log("ลบรูปเก่าไม่สำเร็จ:", err.message);
-          });
-        }
       } else {
         // 🔥 ไม่ได้แก้รูป
         newImage = oldImage;
