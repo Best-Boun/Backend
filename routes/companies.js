@@ -18,40 +18,35 @@ router.get("/:userId", async (req, res) => {
 });
 
 // POST /api/companies
-router.post('/', (req, res) => {
-  const { userId, companyName, industry, size, website, description, logo, location, founded } = req.body;
-  if (!userId) return res.status(400).json({ error: 'userId is required' });
+router.post('/', async (req, res) => {
+  try {
+    const { userId, companyName, industry, size, website, description, logo, location, founded } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId is required' });
 
-  db.query(
-    'SELECT id FROM company_profiles WHERE userId = ?',
-    [userId],
-    (err, existing) => {
-      if (err) return res.status(500).json({ error: 'Database error' });
+    const [existing] = await db.query(
+      'SELECT id FROM company_profiles WHERE userId = ?',
+      [userId]
+    );
 
-      if (existing.length > 0) {
-        db.query(
-          `UPDATE company_profiles SET
-            companyName=?, industry=?, size=?, website=?,
-            description=?, logo=?, location=?, founded=?
-          WHERE userId=?`,
-          [companyName, industry, size, website, description, logo, location, founded, userId],
-          (err2) => {
-            if (err2) return res.status(500).json({ error: 'Update failed' });
-            res.json({ success: true, updated: true });
-          }
-        );
-      } else {
-        db.query(
-          'INSERT INTO company_profiles SET ?',
-          [{ userId, companyName, industry, size, website, description, logo, location, founded }],
-          (err2, result2) => {
-            if (err2) return res.status(500).json({ error: 'Insert failed' });
-            res.json({ success: true, id: result2.insertId });
-          }
-        );
-      }
+    if (existing.length > 0) {
+      await db.query(
+        `UPDATE company_profiles SET
+          companyName=?, industry=?, size=?, website=?,
+          description=?, logo=?, location=?, founded=?
+        WHERE userId=?`,
+        [companyName, industry, size, website, description, logo, location, founded, userId]
+      );
+      res.json({ success: true, updated: true });
+    } else {
+      const [result2] = await db.query(
+        'INSERT INTO company_profiles SET ?',
+        [{ userId, companyName, industry, size, website, description, logo, location, founded }]
+      );
+      res.json({ success: true, id: result2.insertId });
     }
-  );
+  } catch {
+    res.status(500).json({ error: 'Database error' });
+  }
 });
 
 module.exports = router;

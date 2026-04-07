@@ -44,6 +44,7 @@ const upload = multer({
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/posts", require("./routes/posts"));
+app.use("/api/comments", commentRoutes);
 app.use("/api/ads", require("./routes/ads"));
 app.use("/api/jobs", require("./routes/jobs"));
 app.use("/api/favorites", require("./routes/favorites"));
@@ -112,46 +113,47 @@ io.on('connection', (socket) => {
   });
 
   // Send message
-  socket.on('send_message', ({ conversationId, senderId, message }) => {
+  socket.on('send_message', async ({ conversationId, senderId, message }) => {
     const db = require('./db');
-    db.query(
-      'INSERT INTO messages (conversationId, senderId, message) VALUES (?, ?, ?)',
-      [conversationId, senderId, message],
-      (err, result) => {
-        if (err) return;
-        const newMessage = {
-          id: result.insertId,
-          conversationId,
-          senderId,
-          message,
-          isRead: 0,
-          createdAt: new Date(),
-        };
-        io.to(`conv_${conversationId}`).emit('receive_message', newMessage);
+    try {
+      const [result] = await db.query(
+        'INSERT INTO messages (conversationId, senderId, message) VALUES (?, ?, ?)',
+        [conversationId, senderId, message]
+      );
+      const newMessage = {
+        id: result.insertId,
+        conversationId,
+        senderId,
+        message,
+        isRead: 0,
+        createdAt: new Date(),
+      };
+      io.to(`conv_${conversationId}`).emit('receive_message', newMessage);
 
-        // สร้าง notification ให้ผู้รับ
-        db.query(
-          'SELECT employerId, seekerId FROM conversations WHERE id = ?',
-          [conversationId],
-          (err2, convRows) => {
-            if (err2 || convRows.length === 0) return;
-            const conv = convRows[0];
-            const receiverId = conv.employerId === senderId ? conv.seekerId : conv.employerId;
+      // สร้าง notification ให้ผู้รับ
+      const [convRows] = await db.query(
+        'SELECT employerId, seekerId FROM conversations WHERE id = ?',
+        [conversationId]
+      );
+      if (convRows.length === 0) return;
+      const conv = convRows[0];
+      const receiverId = conv.employerId === senderId ? conv.seekerId : conv.employerId;
 
-            // ดึงชื่อผู้ส่ง
-            db.query('SELECT name FROM users WHERE id = ?', [senderId], (err3, userRows) => {
-              if (err3 || userRows.length === 0) return;
-              const senderName = userRows[0].name;
+      // ดึงชื่อผู้ส่ง
+      const [userRows] = await db.query(
+        'SELECT name FROM users WHERE id = ?',
+        [senderId]
+      );
+      if (userRows.length === 0) return;
+      const senderName = userRows[0].name;
 
-              db.query(
-                'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
-                [receiverId, 'new_message', `New message from ${senderName}`]
-              );
-            });
-          }
-        );
-      }
-    );
+      await db.query(
+        'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
+        [receiverId, 'new_message', `New message from ${senderName}`]
+      );
+    } catch (err) {
+      console.error('send_message error:', err);
+    }
   });
 
   // Typing indicator

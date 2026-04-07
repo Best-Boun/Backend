@@ -57,7 +57,35 @@ router.get("/", async (req, res) => {
       benefits: parseJSON(job.benefits),
     }));
 
-    return res.json(jobs);
+    const jobIds = jobs.map((j) => j.id);
+    if (jobIds.length === 0) return res.json(jobs);
+
+    const [skillRows] = await db.query(
+      `SELECT js.jobId, js.skillId, js.requiredLevel, js.weight, js.required, s.name AS skill
+       FROM job_skills js
+       JOIN skills s ON js.skillId = s.id
+       WHERE js.jobId IN (?)`,
+      [jobIds]
+    );
+
+    const skillMap = {};
+    skillRows.forEach((row) => {
+      if (!skillMap[row.jobId]) skillMap[row.jobId] = [];
+      skillMap[row.jobId].push({
+        skillId: row.skillId,
+        skill: row.skill,
+        requiredLevel: row.requiredLevel,
+        weight: row.weight || 2,
+        required: Boolean(row.required),
+      });
+    });
+
+    const jobsWithSkills = jobs.map((job) => ({
+      ...job,
+      jobSkills: skillMap[job.id] || [],
+    }));
+
+    return res.json(jobsWithSkills);
   } catch (err) {
     console.error("GET JOBS ERROR:", err);
     return res.status(500).json({ error: "Database error" });
@@ -99,84 +127,85 @@ router.get("/filters/options", (req, res) => {
 // ==========================
 // GET USER'S APPLICATIONS
 // ==========================
-router.get("/applications/:userId", (req, res) => {
-  const sql = `
-    SELECT ja.*, j.title, j.company, j.logo, j.location, j.salary
-    FROM job_applications ja
-    JOIN jobs j ON ja.jobId = j.id
-    WHERE ja.userId = ?
-    ORDER BY ja.appliedAt DESC
-  `;
-
-  db.query(sql, [req.params.userId], (err, result) => {
-    if (err) {
-      console.error("GET APPLICATIONS ERROR:", err);
-      return res.status(500).json({ error: "Database error" });
-    }
-
+router.get("/applications/:userId", async (req, res) => {
+  try {
+    const sql = `
+      SELECT ja.*, j.title, j.company, j.logo, j.location, j.salary
+      FROM job_applications ja
+      JOIN jobs j ON ja.jobId = j.id
+      WHERE ja.userId = ?
+      ORDER BY ja.appliedAt DESC
+    `;
+    const [result] = await db.query(sql, [req.params.userId]);
     res.json(result);
-  });
+  } catch (err) {
+    console.error("GET APPLICATIONS ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // ==========================
 // UPDATE APPLICATION STATUS
 // ==========================
-router.patch("/applications/:appId/status", (req, res) => {
-  const { status } = req.body;
-  const VALID_STATUSES = ["Applied", "Interview", "Offer", "Rejected"];
+router.patch("/applications/:appId/status", async (req, res) => {
+  try {
+    const { status } = req.body;
+    const VALID_STATUSES = ["Applied", "Interview", "Offer", "Rejected"];
 
-  if (!VALID_STATUSES.includes(status)) {
-    return res
-      .status(400)
-      .json({
+    if (!VALID_STATUSES.includes(status)) {
+      return res.status(400).json({
         error: "status must be one of: Applied, Interview, Offer, Rejected",
       });
-  }
-
-  db.query(
-    "UPDATE job_applications SET status = ? WHERE id = ?",
-    [status, req.params.appId],
-    (err) => {
-      if (err) {
-        console.error("UPDATE STATUS ERROR:", err);
-        return res.status(500).json({ error: "Update failed" });
-      }
-      res.json({ success: true, id: req.params.appId, status });
-      db.query(
-        'SELECT ja.userId, j.title FROM job_applications ja JOIN jobs j ON ja.jobId = j.id WHERE ja.id = ?',
-        [req.params.appId],
-        (e, rows) => {
-          if (e || !rows[0]) return;
-          const { userId: seekerId, title } = rows[0];
-          db.query(
-            'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
-            [seekerId, 'status_changed', `Your application for "${title}" was updated to ${status}`]
-          );
-        }
-      );
     }
-  );
+
+    await db.query(
+      "UPDATE job_applications SET status = ? WHERE id = ?",
+      [status, req.params.appId]
+    );
+    res.json({ success: true, id: req.params.appId, status });
+
+    try {
+      const [rows] = await db.query(
+        'SELECT ja.userId, j.title FROM job_applications ja JOIN jobs j ON ja.jobId = j.id WHERE ja.id = ?',
+        [req.params.appId]
+      );
+      if (rows[0]) {
+        const { userId: seekerId, title } = rows[0];
+        await db.query(
+          'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
+          [seekerId, 'status_changed', `Your application for "${title}" was updated to ${status}`]
+        );
+      }
+    } catch (e) {
+      console.error("NOTIFY ERROR:", e);
+    }
+  } catch (err) {
+    console.error("UPDATE STATUS ERROR:", err);
+    res.status(500).json({ error: "Update failed" });
+  }
 });
 
 // ==========================
 // DELETE APPLICATION
 // ==========================
-router.delete("/applications/:id", (req, res) => {
-  // หา jobId ก่อนลบ
-  db.query("SELECT jobId FROM job_applications WHERE id = ?", [req.params.id], (err, rows) => {
-    if (err || rows.length === 0) return res.status(404).json({ error: "Not found" });
+router.delete("/applications/:id", async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      "SELECT jobId FROM job_applications WHERE id = ?",
+      [req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ error: "Not found" });
 
     const jobId = rows[0].jobId;
-
-    db.query("DELETE FROM job_applications WHERE id = ?", [req.params.id], (err2) => {
-      if (err2) return res.status(500).json({ error: "Delete failed" });
-
-      // ลด applicant count
-      db.query("UPDATE jobs SET applicants = GREATEST(applicants - 1, 0) WHERE id = ?", [jobId]);
-
-      res.json({ success: true });
-    });
-  });
+    await db.query("DELETE FROM job_applications WHERE id = ?", [req.params.id]);
+    await db.query(
+      "UPDATE jobs SET applicants = GREATEST(applicants - 1, 0) WHERE id = ?",
+      [jobId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Delete failed" });
+  }
 });
 
 // ==========================
@@ -277,6 +306,40 @@ router.get("/:jobId/applicants", async (req, res) => {
 
 
 // ==========================
+// GET SIMILAR JOBS
+// ==========================
+router.get("/:id/similar", async (req, res) => {
+  try {
+    const jobId = req.params.id;
+
+    const [skillRows] = await db.query(
+      "SELECT skillId FROM job_skills WHERE jobId = ?",
+      [jobId]
+    );
+    if (skillRows.length === 0) return res.json([]);
+
+    const skillIds = skillRows.map((r) => r.skillId);
+
+    const [rows] = await db.query(
+      `SELECT j.*, COUNT(*) AS matchCount
+       FROM jobs j
+       JOIN job_skills js ON j.id = js.jobId
+       WHERE js.skillId IN (?)
+       AND j.id != ?
+       AND j.active = 1
+       GROUP BY j.id
+       ORDER BY matchCount DESC
+       LIMIT 3`,
+      [skillIds, jobId]
+    );
+
+    res.json(rows);
+  } catch {
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// ==========================
 // GET SINGLE JOB BY ID
 // ==========================
 router.get("/:id", async (req, res) => {
@@ -329,144 +392,9 @@ router.get("/:id", async (req, res) => {
 // ==========================
 // CREATE JOB
 // ==========================
-router.post("/", verifyToken, (req, res) => {
-  const {
-    title,
-    company,
-    logo,
-    location,
-    type,
-    level,
-    salary,
-    description,
-    requirements,
-    benefits,
-    companyDescription,
-    postedDate,
-    userId,
-    active,
-    requirementText,
-  } = req.body;
-
-  if (!title || !company || !location || !salary) {
-    return res
-      .status(400)
-      .json({ error: "title, company, location, salary are required" });
-  }
-
-  db.query(
-    "SELECT id FROM company_profiles WHERE userId = ?",
-    [userId],
-    (err, result) => {
-      if (err) return res.status(500).json({ error: "Database error" });
-      if (result.length === 0) {
-        return res
-          .status(403)
-          .json({
-            error: "Please create a Company Profile before posting jobs",
-          });
-      }
-
-      const job = {
-        userId: userId || null,
-        title,
-        company,
-        logo: logo || "",
-        location,
-        type: type || "Full-time",
-        level: level || "Mid-level",
-        salary,
-        description: description || "",
-        requirements: JSON.stringify(requirements || []),
-        benefits: JSON.stringify(benefits || []),
-        companyDescription: companyDescription || "",
-        postedDate: postedDate || new Date().toISOString().split("T")[0],
-        active: active !== undefined ? Number(active) : 1,
-        applicants: 0,
-      };
-
-      db.query("INSERT INTO jobs SET ?", job, (err2, result2) => {
-        if (err2) {
-          console.error("CREATE JOB ERROR:", err2);
-          return res.status(500).json({ error: "Insert failed" });
-        }
-
-        const newJobId = result2.insertId;
-        const jobSkills = req.body.jobSkills || [];
-
-        upsertJobSkills(newJobId, jobSkills, (skillErr) => {
-          if (skillErr) console.error("JOB SKILLS INSERT ERROR:", skillErr);
-          res.json({
-            success: true,
-            id: newJobId,
-            ...job,
-            requirements: parseJSON(job.requirements),
-            benefits: parseJSON(job.benefits),
-          });
-
-          // หา seeker ที่ match ≥ 70%
-          db.query(
-            `SELECT ps.userId, SUM(CASE WHEN ps.skillId IN (
-               SELECT skillId FROM job_skills WHERE jobId = ?
-             ) THEN 1 ELSE 0 END) AS matched,
-             COUNT(js.skillId) AS total
-             FROM profile_skills ps
-             JOIN job_skills js ON js.jobId = ?
-             GROUP BY ps.userId
-             HAVING (matched / total) * 100 >= 70`,
-            [newJobId, newJobId],
-            (e, seekers) => {
-              if (e || !seekers?.length) return;
-              seekers.forEach(({ userId: seekerId }) => {
-                db.query(
-                  'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
-                  [seekerId, 'job_match', `New job "${job.title}" matches your skills!`]
-                );
-              });
-            }
-          );
-        });
-      });
-    },
-  );
-});
-
-// ==========================
-// UPDATE JOB
-// ==========================
-router.put("/:id", verifyToken, (req, res) => {
-  const id = req.params.id;
-  const {
-    title,
-    company,
-    logo,
-    location,
-    type,
-    level,
-    salary,
-    description,
-    requirements,
-    benefits,
-    companyDescription,
-    postedDate,
-    active,
-    requirementText,
-  } = req.body;
-
-  db.query("SELECT userId FROM jobs WHERE id = ?", [id], (err, rows) => {
-    if (err) return res.status(500).json({ error: "Database error" });
-    if (!rows[0]) return res.status(404).json({ error: "Job not found" });
-    if (rows[0].userId !== req.user.id) return res.status(403).json({ error: "Forbidden" });
-
-    const sql = `
-    UPDATE jobs SET
-      title=?, company=?, logo=?, location=?, type=?, level=?,
-      salary=?, description=?, requirements=?, benefits=?,
-      companyDescription=?, postedDate=?, active=?
-    WHERE id=?
-  `;
-
-    const params = [
+router.post("/", verifyToken, async (req, res) => {
+  try {
+    const {
       title,
       company,
       logo,
@@ -475,6 +403,124 @@ router.put("/:id", verifyToken, (req, res) => {
       level,
       salary,
       description,
+      requirements,
+      benefits,
+      companyDescription,
+      postedDate,
+      userId,
+      active,
+      requirementText,
+    } = req.body;
+
+    if (!title || !company || !location || !salary) {
+      return res.status(400).json({ error: "title, company, location, salary are required" });
+    }
+
+    const [companyRows] = await db.query(
+      "SELECT id FROM company_profiles WHERE userId = ?",
+      [userId]
+    );
+    if (companyRows.length === 0) {
+      return res.status(403).json({ error: "Please create a Company Profile before posting jobs" });
+    }
+
+    const job = {
+      userId: userId || null,
+      title,
+      company,
+      logo: logo || "",
+      location,
+      type: type || "Full-time",
+      level: level || "Mid-level",
+      salary,
+      description: description || "",
+      requirements: JSON.stringify(requirements || []),
+      benefits: JSON.stringify(benefits || []),
+      companyDescription: companyDescription || "",
+      postedDate: postedDate || new Date().toISOString().split("T")[0],
+      active: active !== undefined ? Number(active) : 1,
+      applicants: 0,
+    };
+
+    const [result2] = await db.query("INSERT INTO jobs SET ?", job);
+    const newJobId = result2.insertId;
+    const jobSkills = req.body.jobSkills || [];
+
+    await upsertJobSkills(newJobId, jobSkills);
+
+    res.json({
+      success: true,
+      id: newJobId,
+      ...job,
+      requirements: parseJSON(job.requirements),
+      benefits: parseJSON(job.benefits),
+    });
+
+    // หา seeker ที่ match ≥ 70% (fire-and-forget)
+    try {
+      const [seekers] = await db.query(
+        `SELECT ps.userId, SUM(CASE WHEN ps.skillId IN (
+           SELECT skillId FROM job_skills WHERE jobId = ?
+         ) THEN 1 ELSE 0 END) AS matched,
+         COUNT(js.skillId) AS total
+         FROM profile_skills ps
+         JOIN job_skills js ON js.jobId = ?
+         GROUP BY ps.userId
+         HAVING (matched / total) * 100 >= 70`,
+        [newJobId, newJobId]
+      );
+      if (seekers?.length) {
+        for (const { userId: seekerId } of seekers) {
+          await db.query(
+            'INSERT INTO notifications (userId, type, message) VALUES (?, ?, ?)',
+            [seekerId, 'job_match', `New job "${job.title}" matches your skills!`]
+          );
+        }
+      }
+    } catch (e) {
+      console.error("JOB MATCH NOTIFY ERROR:", e);
+    }
+  } catch (err) {
+    console.error("CREATE JOB ERROR:", err);
+    res.status(500).json({ error: "Insert failed" });
+  }
+});
+
+// ==========================
+// UPDATE JOB
+// ==========================
+router.put("/:id", verifyToken, async (req, res) => {
+  try {
+    const id = req.params.id;
+    const {
+      title,
+      company,
+      logo,
+      location,
+      type,
+      level,
+      salary,
+      description,
+      requirements,
+      benefits,
+      companyDescription,
+      postedDate,
+      active,
+    } = req.body;
+
+    const [rows] = await db.query("SELECT userId FROM jobs WHERE id = ?", [id]);
+    if (!rows[0]) return res.status(404).json({ error: "Job not found" });
+    if (rows[0].userId !== req.user.id) return res.status(403).json({ error: "Forbidden" });
+
+    const sql = `
+      UPDATE jobs SET
+        title=?, company=?, logo=?, location=?, type=?, level=?,
+        salary=?, description=?, requirements=?, benefits=?,
+        companyDescription=?, postedDate=?, active=?
+      WHERE id=?
+    `;
+    const params = [
+      title, company, logo, location, type, level, salary, description,
       JSON.stringify(requirements || []),
       JSON.stringify(benefits || []),
       companyDescription,
@@ -483,39 +529,32 @@ router.put("/:id", verifyToken, (req, res) => {
       id,
     ];
 
-    db.query(sql, params, (err) => {
-      if (err) {
-        console.error("UPDATE JOB ERROR:", err);
-        return res.status(500).json({ error: "Update failed" });
-      }
+    await db.query(sql, params);
 
-      const jobSkills = req.body.jobSkills || [];
-      upsertJobSkills(id, jobSkills, (skillErr) => {
-        if (skillErr) console.error("JOB SKILLS UPDATE ERROR:", skillErr);
-        res.json({ success: true, id });
-      });
-    });
-  });
+    const jobSkills = req.body.jobSkills || [];
+    await upsertJobSkills(id, jobSkills);
+    res.json({ success: true, id });
+  } catch (err) {
+    console.error("UPDATE JOB ERROR:", err);
+    res.status(500).json({ error: "Update failed" });
+  }
 });
 
 // ==========================
 // DELETE JOB
 // ==========================
-router.delete("/:id", verifyToken, (req, res) => {
-  db.query("SELECT userId FROM jobs WHERE id = ?", [req.params.id], (err, rows) => {
-    if (err) return res.status(500).json({ error: "Database error" });
+router.delete("/:id", verifyToken, async (req, res) => {
+  try {
+    const [rows] = await db.query("SELECT userId FROM jobs WHERE id = ?", [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: "Job not found" });
     if (rows[0].userId !== req.user.id) return res.status(403).json({ error: "Forbidden" });
 
-    db.query("DELETE FROM jobs WHERE id = ?", [req.params.id], (err) => {
-      if (err) {
-        console.error("DELETE JOB ERROR:", err);
-        return res.status(500).json({ error: "Delete failed" });
-      }
-
-      res.json({ success: true, id: req.params.id });
-    });
-  });
+    await db.query("DELETE FROM jobs WHERE id = ?", [req.params.id]);
+    res.json({ success: true, id: req.params.id });
+  } catch (err) {
+    console.error("DELETE JOB ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
 });
 
 // ==========================
@@ -599,44 +638,25 @@ router.post("/:id/apply", async (req, res) => {
 // ================================================
 // HELPER: upsert job skills
 // ================================================
-function upsertJobSkills(jobId, jobSkills, callback) {
-  if (!jobSkills || jobSkills.length === 0) return callback(null);
+async function upsertJobSkills(jobId, jobSkills) {
+  if (!jobSkills || jobSkills.length === 0) return;
 
-  db.query("DELETE FROM job_skills WHERE jobId = ?", [jobId], (err) => {
-    if (err) return callback(err);
+  await db.query("DELETE FROM job_skills WHERE jobId = ?", [jobId]);
 
-    let done = 0;
-    let errored = false;
-
-    jobSkills.forEach(({ skillId, skill, requiredLevel, weight, required }) => {
-      const id = skillId || null;
-      if (!id) {
-        done++;
-        if (done === jobSkills.length) callback(null);
-        return;
-      }
-
-      db.query(
-        "INSERT INTO job_skills (jobId, skillId, requiredLevel, weight, required) VALUES (?, ?, ?, ?, ?)",
-        [
-          jobId,
-          id,
-          requiredLevel || "Intermediate",
-          weight || 2,
-          required !== undefined ? (required ? 1 : 0) : 1,
-        ],
-        (err2) => {
-          if (errored) return;
-          if (err2) {
-            errored = true;
-            return callback(err2);
-          }
-          done++;
-          if (done === jobSkills.length) callback(null);
-        },
-      );
-    });
-  });
+  for (const { skillId, requiredLevel, weight, required } of jobSkills) {
+    const id = skillId || null;
+    if (!id) continue;
+    await db.query(
+      "INSERT INTO job_skills (jobId, skillId, requiredLevel, weight, required) VALUES (?, ?, ?, ?, ?)",
+      [
+        jobId,
+        id,
+        requiredLevel || "Intermediate",
+        weight || 2,
+        required !== undefined ? (required ? 1 : 0) : 1,
+      ]
+    );
+  }
 }
 
 // ==========================

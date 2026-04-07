@@ -338,6 +338,58 @@ async function upsertSkillsAsync(userId, skills) {
 
 
 // ================================================
+// GET /api/profiles/search
+// ================================================
+router.get("/search", async (req, res) => {
+  try {
+    const { name, skill, location } = req.query;
+
+    const conditions = [
+      "u.role = 'seeker'",
+      "p.name IS NOT NULL",
+      "p.name != ''",
+      "u.isBanned = 0",
+    ];
+    const params = [];
+
+    if (name) {
+      conditions.push("p.title LIKE ?");
+      params.push(`%${name}%`);
+    }
+    if (skill) {
+      conditions.push(
+        "p.userId IN (SELECT ps2.userId FROM profile_skills ps2 JOIN skills s2 ON ps2.skillId = s2.id WHERE s2.name LIKE ?)"
+      );
+      params.push(`%${skill}%`);
+    }
+    if (location) {
+      conditions.push("p.location LIKE ?");
+      params.push(`%${location}%`);
+    }
+
+    const sql = `
+      SELECT DISTINCT
+        p.userId, p.name, p.title, p.location,
+        p.profileImage, p.openToWork,
+        GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS skillNames
+      FROM profiles p
+      JOIN users u ON p.userId = u.id
+      LEFT JOIN profile_skills ps ON p.userId = ps.userId
+      LEFT JOIN skills s ON ps.skillId = s.id
+      WHERE ${conditions.join(" AND ")}
+      GROUP BY p.userId
+      ORDER BY p.name ASC
+      LIMIT 50
+    `;
+
+    const [rows] = await db.query(sql, params);
+    res.json(rows);
+  } catch {
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
+// ================================================
 // GET /api/profiles?userId=:userId
 // ================================================
 router.get("/", async (req, res) => {
