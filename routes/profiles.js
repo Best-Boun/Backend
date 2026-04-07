@@ -127,11 +127,12 @@ function buildProfileObject(profile, subs, email) {
       name: r.name,
       issuer: r.issuer,
       date: r.date,
+      expiryDate: r.expiryDate,
+      issueDate: r.date,
       url: r.url,
     })),
     projects: (subs["profile_projects"] || []).map((r) => ({
       id: r.id,
-      title: r.name,
       image: r.image,
       category: r.techStack || r.category || null,
       link: r.url,
@@ -139,6 +140,29 @@ function buildProfileObject(profile, subs, email) {
       description: r.description,
     })),
   };
+}
+
+
+function formatDate(d) {
+  if (!d || d === "Invalid Date") return null;
+
+  if (typeof d !== "string") return null;
+
+  if (d.includes("-")) return d;
+
+  const parts = d.split("/");
+  if (parts.length === 3) {
+    let [day, month, year] = parts;
+
+    if (!day || !month || !year) return null;
+
+    if (day.length === 1) day = "0" + day;
+    if (month.length === 1) month = "0" + month;
+
+    return `${year}-${month}-${day}`;
+  }
+
+  return null;
 }
 
 // ================================================
@@ -169,10 +193,74 @@ async function insertSubTablesAsync(userId, body) {
     });
   });
 
+  // 🔥 ADD THIS BLOCK
+  education.forEach((edu) => {
+    inserts.push({
+      table: "profile_education",
+      row: {
+        userId,
+        institution: edu.institution || edu.school || null,
+        degree: edu.degree || null,
+        field: edu.field || null,
+        startDate: edu.startDate || null,
+        endDate: edu.endDate || null,
+        grade: edu.grade || null,
+      },
+    });
+  });
+
+  // 🔥 ADD THIS
+  languages.forEach((lang) => {
+    inserts.push({
+      table: "profile_languages",
+      row: {
+        userId,
+        language: lang.language || null,
+        level: lang.level || null,
+      },
+    });
+  });
+
+ certifications.forEach((cert) => {
+   console.log("CERT:", cert);
+
+   inserts.push({
+     table: "profile_certifications",
+     row: {
+       userId,
+       name: cert.name || "",
+       issuer: cert.issuer || "",
+       date: cert.issueDate || cert.date || null,
+       expiryDate: cert.expiryDate || null,
+       url: cert.url || null,
+     },
+   });
+ });
+
+projects.forEach((proj) => {
+  inserts.push({
+    table: "profile_projects",
+    row: {
+      userId,
+      description: proj.description || "",
+      url: proj.url || proj.link || "",
+      image: proj.image || "",
+      techStack: proj.techStack || proj.category || "",
+    },
+  });
+});
+
   // (copy ส่วนอื่นเหมือนเดิม)
 
   for (const { table, row } of inserts) {
-   await db.query(`INSERT INTO ${table} SET ?`, [row]);
+    try {
+      await db.query(`INSERT INTO ${table} SET ?`, [row]);
+    } catch (err) {
+      console.log("❌ INSERT ERROR:", table);
+      console.log("ROW:", row);
+      console.log("ERROR:", err);
+      throw err;
+    }
   }
 }
 
@@ -437,47 +525,42 @@ return res.json(buildProfileObject(profile, subs, null));
 // ================================================
 // POST /api/profiles
 // ================================================
-router.post("/", verifyToken, (req, res) => {
-  const { userId } = req.body;
+router.post("/", verifyToken, async (req, res) => {
+  try {
+    const { userId } = req.body;
 
-  if (parseInt(userId) !== req.user.id) {
-    return res.status(403).json({ error: 'Forbidden' });
-  }
-
-  if (!userId) {
-    return res.status(400).json({ error: "userId is required" });
-  }
-
-  const mainRow = { userId };
-  PROFILE_FIELDS.forEach((f) => {
-    if (req.body[f] !== undefined) {
-      mainRow[f] =
-        f === "privacy" && typeof req.body[f] === "object"
-          ? JSON.stringify(req.body[f])
-          : req.body[f];
-    }
-  });
-  mainRow.createdAt = new Date();
-  mainRow.updatedAt = new Date();
-
-  db.query("INSERT INTO profiles SET ?", mainRow, (err) => {
-    if (err) {
-      console.error("CREATE PROFILE ERROR:", err);
-      return res.status(500).json({ error: "Insert failed" });
+    if (parseInt(userId) !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden" });
     }
 
-    upsertSkills(userId, req.body.skills || [], (skillErr) => {
-      if (skillErr)
-        return res.status(500).json({ error: "Skills insert failed" });
-      insertSubTables(userId, { ...req.body, skills: [] }, (subErr) => {
-        if (subErr) {
-          console.error("INSERT SUB-TABLES ERROR:", subErr);
-          return res.status(500).json({ error: "Sub-table insert failed" });
-        }
-        return res.json({ success: true, userId });
-      });
+    const mainRow = { userId };
+
+    PROFILE_FIELDS.forEach((f) => {
+      if (req.body[f] !== undefined) {
+        mainRow[f] =
+          f === "privacy" && typeof req.body[f] === "object"
+            ? JSON.stringify(req.body[f])
+            : req.body[f];
+      }
     });
-  });
+
+    mainRow.createdAt = new Date();
+    mainRow.updatedAt = new Date();
+
+    await db.query("INSERT INTO profiles SET ?", [mainRow]);
+
+    await upsertSkillsAsync(userId, req.body.skills || []);
+
+    await insertSubTablesAsync(userId, {
+      ...req.body,
+      skills: [],
+    });
+
+    res.json({ success: true, userId });
+  } catch (err) {
+    console.error("CREATE PROFILE ERROR:", err);
+    res.status(500).json({ error: "Insert failed" });
+  }
 });
 
 // ================================================
@@ -526,6 +609,7 @@ router.put("/:userId", verifyToken, async (req, res) => {
 
     // console.log("STEP 1");
 
+      // *********
     await deleteSubTablesAsync(userId);
 
     // console.log("STEP 2");
