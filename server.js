@@ -44,6 +44,7 @@ const upload = multer({
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/posts", require("./routes/posts"));
+app.use("/api/comments", commentRoutes);
 app.use("/api/ads", require("./routes/ads"));
 app.use("/api/jobs", require("./routes/jobs"));
 app.use("/api/favorites", require("./routes/favorites"));
