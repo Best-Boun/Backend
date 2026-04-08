@@ -31,6 +31,7 @@ const PROFILE_FIELDS = [
   "linkedin",
   "github",
   "privacy",
+  "style",
 ];
 
 // ================================================
@@ -89,6 +90,10 @@ function buildProfileObject(profile, subs, email) {
       typeof profile.privacy === "string"
         ? JSON.parse(profile.privacy)
         : profile.privacy || {},
+    style:
+      typeof profile.style === "string"
+        ? JSON.parse(profile.style)
+        : profile.style || null,
     skills: (subs["profile_skills"] || []).map((r) => ({
       id: r.id,
       name: r.skillName || r.skill,
@@ -485,7 +490,7 @@ router.post("/", verifyToken, async (req, res) => {
     PROFILE_FIELDS.forEach((f) => {
       if (req.body[f] !== undefined) {
         mainRow[f] =
-          f === "privacy" && typeof req.body[f] === "object"
+          (f === "privacy" || f === "style") && typeof req.body[f] === "object"
             ? JSON.stringify(req.body[f])
             : req.body[f];
       }
@@ -523,7 +528,7 @@ router.put("/:userId", verifyToken, async (req, res) => {
     const updates = {};
     PROFILE_FIELDS.forEach((f) => {
       if (req.body[f] !== undefined) {
-        updates[f] = f === "privacy" && typeof req.body[f] === "object"
+        updates[f] = (f === "privacy" || f === "style") && typeof req.body[f] === "object"
           ? JSON.stringify(req.body[f])
           : req.body[f];
       }
