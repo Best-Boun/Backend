@@ -9,12 +9,16 @@ router.get("/:postId", async (req, res) => {
     const postId = req.params.postId;
 
     const sql = `
-      SELECT comments.*, users.name AS username, users.profileImage
-      FROM comments
-      JOIN users ON comments.userId = users.id
-      WHERE postId = ?
-      ORDER BY createdAt ASC
-    `;
+  SELECT 
+    comments.*, 
+    COALESCE(NULLIF(profiles.name, ''), users.name) AS name,
+    users.profileImage
+  FROM comments
+  JOIN users ON comments.userId = users.id
+  LEFT JOIN profiles ON users.id = profiles.userId
+  WHERE postId = ?
+  ORDER BY comments.createdAt ASC
+`;
 
     const [result] = await db.query(sql, [postId]);
 

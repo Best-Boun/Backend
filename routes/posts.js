@@ -9,15 +9,16 @@ const verifyToken = require("../middleware/authMiddleware");
 // ==========================
 router.get("/", async (req, res) => {
   try {
-    const sql = `
-      SELECT 
-        posts.*, 
-        users.name AS username,
-        users.profileImage
-      FROM posts
-      JOIN users ON posts.userId = users.id
-      ORDER BY posts.createdAt DESC
-    `;
+  const sql = `
+  SELECT 
+    posts.*, 
+    COALESCE(NULLIF(profiles.name, ''), users.name) AS name,
+    users.profileImage
+  FROM posts
+  JOIN users ON posts.userId = users.id
+  LEFT JOIN profiles ON users.id = profiles.userId
+  ORDER BY posts.createdAt DESC
+`;
 
     const [result] = await db.query(sql);
 
