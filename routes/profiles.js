@@ -31,6 +31,7 @@ const PROFILE_FIELDS = [
   "linkedin",
   "github",
   "privacy",
+  "style",
 ];
 
 // ================================================
@@ -89,6 +90,10 @@ function buildProfileObject(profile, subs, email) {
       typeof profile.privacy === "string"
         ? JSON.parse(profile.privacy)
         : profile.privacy || {},
+    style:
+      typeof profile.style === "string"
+        ? JSON.parse(profile.style)
+        : profile.style || null,
     skills: (subs["profile_skills"] || []).map((r) => ({
       id: r.id,
       name: r.skillName || r.skill,
@@ -264,126 +269,6 @@ projects.forEach((proj) => {
   }
 }
 
-// ================================================
-// HELPER: upsert skills → master table → profile_skills
-// ================================================
-function upsertSkills(userId, skills, callback) {
-  if (!skills || skills.length === 0) return callback(null);
-
-  let done = 0;
-  let finished = false;
-
-  skills.forEach((skill) => {
-    const skillName =
-      typeof skill === "string" ? skill : skill.name || skill.skill || "";
-    const yearsExp = typeof skill === "object" ? skill.yearsExp || 0 : 0;
-
-    if (!skillName) {
-      done++;
-      if (done === skills.length && !finished) {
-        finished = true;
-        callback(null);
-      }
-      return;
-    }
-
-    db.query(
-      "SELECT id FROM skills WHERE name = ?",
-      [skillName],
-      (err, rows) => {
-        if (finished) return;
-
-        if (err) {
-          finished = true;
-          return callback(err);
-        }
-
-        const skillId = rows[0]?.id;
-
-        if (!skillId) {
-          // 🔥 insert skill ใหม่เข้า master table ก่อน
-          db.query(
-            "INSERT INTO skills (name) VALUES (?)",
-            [skillName],
-            (err3, result3) => {
-              if (err3) return callback(err3);
-
-              const newSkillId = result3.insertId;
-
-              db.query(
-                "INSERT INTO profile_skills (userId, skillId, skill, yearsExp) VALUES (?, ?, ?, ?)",
-                [userId, newSkillId, skillName, yearsExp],
-                (err4) => {
-                  if (err4) return callback(err4);
-
-                  done++;
-                  if (done === skills.length && !finished) {
-                    finished = true;
-                    callback(null);
-                  }
-                },
-              );
-            },
-          );
-          return;
-        }
-
-        db.query(
-          "INSERT INTO profile_skills (userId, skillId, skill, yearsExp) VALUES (?, ?, ?, ?)",
-          [userId, skillId, skillName, yearsExp],
-          (err2) => {
-            if (finished) return;
-
-            if (err2) {
-              finished = true;
-              return callback(err2);
-            }
-
-            done++;
-            if (done === skills.length && !finished) {
-              finished = true;
-              callback(null);
-            }
-          },
-        );
-      },
-    );
-  });
-}
-
-// ================================================
-// HELPER: delete all sub-tables for a userId
-// ================================================
-function deleteSubTables(userId, callback) {
-  let done = 0;
-  let finished = false;
-
-  SUB_TABLES.forEach((table) => {
-    db.query(`DELETE FROM ${table} WHERE userId = ?`, [userId], (err) => {
-      if (finished) return;
-
-      if (err) {
-        finished = true;
-        return callback(err);
-      }
-
-      done++;
-      if (done === SUB_TABLES.length) {
-        finished = true;
-        callback(null);
-      }
-    });
-  });
-}
-
-// ================================================
-// HELPER: delete all sub-tables (ASYNC VERSION)
-// ================================================
-async function deleteSubTablesAsync(userId) {
-  for (const table of SUB_TABLES) {
-    await db.query(`DELETE FROM ${table} WHERE userId = ?`, [userId]);
-  }
-}
 
 // ================================================
 // HELPER: upsert skills (ASYNC)
@@ -424,6 +309,73 @@ async function upsertSkillsAsync(userId, skills) {
 }
 
 
+
+// ================================================
+// HELPER: upsert skills using a connection (for transactions)
+// ================================================
+async function upsertSkillsWithConn(conn, userId, skills) {
+  if (!skills || skills.length === 0) return;
+  for (const skill of skills) {
+    const skillName = typeof skill === "string" ? skill : skill.name || skill.skill || "";
+    const yearsExp = skill.yearsExp || 0;
+    if (!skillName) continue;
+
+    const [rows] = await conn.query("SELECT id FROM skills WHERE name = ?", [skillName]);
+    let skillId = rows[0]?.id;
+    if (!skillId) {
+      const [result] = await conn.query("INSERT INTO skills (name) VALUES (?)", [skillName]);
+      skillId = result.insertId;
+    }
+    await conn.query(
+      "INSERT INTO profile_skills (userId, skillId, skill, yearsExp) VALUES (?, ?, ?, ?)",
+      [userId, skillId, skillName, yearsExp]
+    );
+  }
+}
+
+// ================================================
+// HELPER: insert all sub-tables using a connection (for transactions)
+// ================================================
+async function insertSubTablesWithConn(conn, userId, body) {
+  const { experience = [], education = [], languages = [], certifications = [], projects = [] } = body;
+
+  for (const exp of experience) {
+    await conn.query("INSERT INTO profile_experience SET ?", [{
+      userId, company: exp.company || null,
+      role: exp.role || exp.title || null,
+      startDate: exp.startDate || null,
+      endDate: exp.endDate || null,
+      description: exp.description || null,
+    }]);
+  }
+  for (const edu of education) {
+    await conn.query("INSERT INTO profile_education SET ?", [{
+      userId, institution: edu.institution || edu.school || null,
+      degree: edu.degree || null, field: edu.field || null,
+      startDate: edu.startDate || null, endDate: edu.endDate || null,
+      grade: edu.grade || null,
+    }]);
+  }
+  for (const lang of languages) {
+    await conn.query("INSERT INTO profile_languages SET ?", [{
+      userId, language: lang.language || null, level: lang.level || null,
+    }]);
+  }
+  for (const cert of certifications) {
+    await conn.query("INSERT INTO profile_certifications SET ?", [{
+      userId, name: cert.name || "", issuer: cert.issuer || "",
+      date: cert.issueDate || cert.date || null,
+      expiryDate: cert.expiryDate || null, url: cert.url || null,
+    }]);
+  }
+  for (const proj of projects) {
+    await conn.query("INSERT INTO profile_projects SET ?", [{
+      userId, description: proj.description || "",
+      url: proj.url || proj.link || "",
+      image: proj.image || "", techStack: proj.techStack || proj.category || "",
+    }]);
+  }
+}
 
 // ================================================
 // GET /api/profiles/search
@@ -538,7 +490,7 @@ router.post("/", verifyToken, async (req, res) => {
     PROFILE_FIELDS.forEach((f) => {
       if (req.body[f] !== undefined) {
         mainRow[f] =
-          f === "privacy" && typeof req.body[f] === "object"
+          (f === "privacy" || f === "style") && typeof req.body[f] === "object"
             ? JSON.stringify(req.body[f])
             : req.body[f];
       }
@@ -567,68 +519,50 @@ router.post("/", verifyToken, async (req, res) => {
 // PUT /api/profiles/:userId
 // ================================================
 router.put("/:userId", verifyToken, async (req, res) => {
+  const userId = parseInt(req.params.userId);
+  const conn = await db.getConnection();
+
   try {
-    const userId = parseInt(req.params.userId);
+    await conn.beginTransaction();
 
     const updates = {};
     PROFILE_FIELDS.forEach((f) => {
       if (req.body[f] !== undefined) {
-        updates[f] =
-          f === "privacy" && typeof req.body[f] === "object"
-            ? JSON.stringify(req.body[f])
-            : req.body[f];
+        updates[f] = (f === "privacy" || f === "style") && typeof req.body[f] === "object"
+          ? JSON.stringify(req.body[f])
+          : req.body[f];
       }
     });
     updates.updatedAt = new Date();
 
-   const [rows] = await db.query("SELECT id FROM profiles WHERE userId = ?", [
-     userId,
-   ]);
+    const [rows] = await conn.query("SELECT id FROM profiles WHERE userId = ?", [userId]);
 
-    // 🔥 INSERT
     if (rows.length === 0) {
-      const newRow = { userId, ...updates, createdAt: new Date() };
-
-      await db.query("INSERT INTO profiles SET ?", [newRow]);
-    }
-    // 🔥 UPDATE
-    else {
-      await db.query("UPDATE profiles SET ? WHERE userId = ?", [
-        updates,
-        userId,
-      ]);
+      await conn.query("INSERT INTO profiles SET ?", [{ userId, ...updates, createdAt: new Date() }]);
+    } else {
+      await conn.query("UPDATE profiles SET ? WHERE userId = ?", [updates, userId]);
     }
 
-    // 🔥 update profileImage ใน users
     if (updates.profileImage) {
-      await db.query("UPDATE users SET profileImage = ? WHERE id = ?", [
-        updates.profileImage,
-        userId,
-      ]);
+      await conn.query("UPDATE users SET profileImage = ? WHERE id = ?", [updates.profileImage, userId]);
     }
 
-    // console.log("STEP 1");
+    for (const table of SUB_TABLES) {
+      await conn.query(`DELETE FROM ${table} WHERE userId = ?`, [userId]);
+    }
 
-      // *********
-    await deleteSubTablesAsync(userId);
+    await upsertSkillsWithConn(conn, userId, req.body.skills || []);
+    await insertSubTablesWithConn(conn, userId, { ...req.body, skills: [] });
 
-    // console.log("STEP 2");
+    await conn.commit();
+    res.json({ success: true, userId });
 
-    await upsertSkillsAsync(userId, req.body.skills || []);
-
-    // console.log("STEP 3");
-
-    await insertSubTablesAsync(userId, {
-      ...req.body,
-      skills: [],
-    });
-
-    // console.log("STEP 4");
-
-    return res.json({ success: true, userId });
   } catch (err) {
-    console.log("ERROR:", err);
-    return res.status(500).json({ error: "Update failed" });
+    await conn.rollback();
+    console.error("UPDATE PROFILE ERROR:", err);
+    res.status(500).json({ error: "Update failed" });
+  } finally {
+    conn.release();
   }
 });
     
