@@ -211,20 +211,7 @@ router.delete("/applications/:id", async (req, res) => {
 // ==========================
 // GET APPLICANTS FOR A JOB
 // ==========================
-router.get("/:jobId/applicants", (req, res) => {
-  // Step 1: ดึง job_skills
-  db.query(
-    "DELETE FROM job_applications WHERE id = ?",
-    [req.params.id],
-    (err) => {
-      if (err) {
-        console.error("DELETE APPLICATION ERROR:", err);
-        return res.status(500).json({ error: "Delete failed" });
-      }
-      res.json({ success: true });
-    },
-  );
-});
+
 
 // ==========================
 // EMPLOYER — ALL JOBS (manage)

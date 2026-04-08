@@ -87,4 +87,46 @@ router.delete("/:id", verifyToken, async (req, res) => {
   }
 });
 
+// ================= UPDATE COMMENT =================
+router.put("/:id", verifyToken, async (req, res) => {
+  try {
+    const commentId = req.params.id;
+    const userId = req.user.id;
+    const role = req.user.role;
+    const { text } = req.body;
+
+    // กันข้อความว่าง
+    if (!text || !text.trim()) {
+      return res.status(400).json({ message: "Empty comment" });
+    }
+
+    // หา comment
+    const [result] = await db.query("SELECT * FROM comments WHERE id = ?", [
+      commentId,
+    ]);
+
+    if (result.length === 0) {
+      return res.status(404).json({ message: "Comment not found" });
+    }
+
+    const comment = result[0];
+
+    // เช็คสิทธิ์ (เจ้าของ หรือ admin)
+    if (comment.userId !== userId && role !== "admin") {
+      return res.status(403).json({ message: "Forbidden" });
+    }
+
+    // update
+    await db.query(
+      "UPDATE comments SET text = ? WHERE id = ?",
+      [text, commentId]
+    );
+
+    res.json({ message: "Comment updated" });
+  } catch (err) {
+    console.error("UPDATE COMMENT ERROR:", err);
+    res.status(500).json({ error: "Database error" });
+  }
+});
+
 module.exports = router;

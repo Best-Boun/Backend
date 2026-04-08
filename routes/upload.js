@@ -8,7 +8,7 @@ const storage = new CloudinaryStorage({
   cloudinary,
   params: {
     folder: "uploads",
-    allowed_formats: ["jpg", "png", "jpeg", "webp"],
+    allowed_formats: ["jpg", "png", "jpeg", "webp", "avif"],
     transformation: [{ width: 800, crop: "limit", quality: "auto" }],
   },
 });

@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require("../db");
 const verifyToken = require("../middleware/authMiddleware");
 
+
 // ==========================
 // GET POSTS
 // ==========================
@@ -33,14 +34,15 @@ router.get("/", async (req, res) => {
 router.post("/", verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
-    const { text } = req.body;
+    const { text, image } = req.body;
+   
 
-    const sql = `
-      INSERT INTO posts (userId, text)
-      VALUES (?, ?)
-    `;
+   const sql = `
+  INSERT INTO posts (userId, text, image)
+  VALUES (?, ?, ?)
+`;
 
-    await db.query(sql, [userId, text]);
+   await db.query(sql, [userId, text, image]);
 
     res.json({ message: "Post created" });
   } catch (err) {
@@ -57,7 +59,7 @@ router.put("/:id", verifyToken, async (req, res) => {
     const postId = req.params.id;
     const userId = req.user.id;
     const role = req.user.role;
-    const { text } = req.body;
+   const { text, image } = req.body;
 
     // หาโพสก่อน
     const [result] = await db.query("SELECT * FROM posts WHERE id = ?", [
@@ -76,7 +78,11 @@ router.put("/:id", verifyToken, async (req, res) => {
     }
 
     // update
-    await db.query("UPDATE posts SET text = ? WHERE id = ?", [text, postId]);
+    await db.query("UPDATE posts SET text = ?, image = ? WHERE id = ?", [
+      text,
+      image,
+      postId,
+    ]);
 
     res.json({ message: "Post updated" });
   } catch (err) {
