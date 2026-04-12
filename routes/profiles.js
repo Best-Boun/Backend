@@ -432,6 +432,70 @@ router.get("/search", async (req, res) => {
 // ================================================
 // GET /api/profiles?userId=:userId
 // ================================================
+/**
+ * @swagger
+ * /api/profiles:
+ *   get:
+ *     summary: ดึงข้อมูลโปรไฟล์ผู้ใช้
+ *     description: Fetch user profile including style customization settings
+ *     tags: [Profiles]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: User ID to fetch profile for
+ *     responses:
+ *       200:
+ *         description: Profile fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 userId:
+ *                   type: integer
+ *                   example: 1
+ *                 name:
+ *                   type: string
+ *                   example: "สมชาย ใจดี"
+ *                 title:
+ *                   type: string
+ *                   example: "Senior Frontend Developer"
+ *                 summary:
+ *                   type: string
+ *                 profileImage:
+ *                   type: string
+ *                 skills:
+ *                   type: array
+ *                   items:
+ *                     type: string
+ *                   example: ["React", "TypeScript", "Node.js"]
+ *                 style:
+ *                   type: object
+ *                   properties:
+ *                     themeIdx:
+ *                       type: integer
+ *                       example: 0
+ *                     accent:
+ *                       type: string
+ *                       example: "#4f46e5"
+ *                     fontId:
+ *                       type: string
+ *                       example: "geist"
+ *                     layout:
+ *                       type: string
+ *                       example: "sidebar"
+ *       400:
+ *         description: Bad request - userId required
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.get("/", async (req, res) => {
   const userId = parseInt(req.query.userId);
 
@@ -518,6 +582,127 @@ router.post("/", verifyToken, async (req, res) => {
 // ================================================
 // PUT /api/profiles/:userId
 // ================================================
+/**
+ * @swagger
+ * /api/profiles/{userId}:
+ *   put:
+ *     summary: อัปเดตโปรไฟล์และการตั้งค่ารูปแบบ
+ *     description: Update user profile data and save profile styling (layout, theme, font, etc)
+ *     tags: [Profiles]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: User ID to update profile for
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 example: "สมชาย ใจดี"
+ *               title:
+ *                 type: string
+ *                 example: "Senior Frontend Developer"
+ *               summary:
+ *                 type: string
+ *               profileImage:
+ *                 type: string
+ *               skills:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               style:
+ *                 type: object
+ *                 properties:
+ *                   themeIdx:
+ *                     type: integer
+ *                     minimum: 0
+ *                     maximum: 7
+ *                   accent:
+ *                     type: string
+ *                   fontId:
+ *                     type: string
+ *                     enum: ["geist", "lora", "mono", "fraunces", "syne"]
+ *                   cover:
+ *                     type: string
+ *                   coverBlur:
+ *                     type: integer
+ *                     minimum: 0
+ *                     maximum: 16
+ *                   showCover:
+ *                     type: boolean
+ *                   fontSize:
+ *                     type: integer
+ *                     minimum: 12
+ *                     maximum: 20
+ *                   lineSpacing:
+ *                     type: integer
+ *                     minimum: 16
+ *                     maximum: 48
+ *                   cardRadius:
+ *                     type: integer
+ *                     minimum: 0
+ *                     maximum: 24
+ *                   shadowPx:
+ *                     type: integer
+ *                     minimum: 0
+ *                     maximum: 48
+ *                   layout:
+ *                     type: string
+ *                     enum: ["sidebar", "minimal", "grid", "split", "card"]
+ *                   darkMode:
+ *                     type: boolean
+ *                   sectionOrder:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                   alignment:
+ *                     type: string
+ *                     enum: ["left", "center"]
+ *                   containerWidth:
+ *                     type: string
+ *                     enum: ["sm", "md", "lg", "full"]
+ *                   animation:
+ *                     type: string
+ *                     enum: ["none", "fade", "slide"]
+ *                   headerStyle:
+ *                     type: string
+ *                     enum: ["classic", "banner", "compact"]
+ *                   skillStyle:
+ *                     type: string
+ *                     enum: ["pill", "badge", "bar", "dot"]
+ *                   timelineStyle:
+ *                     type: string
+ *                     enum: ["line", "compact", "card"]
+ *     responses:
+ *       200:
+ *         description: Profile updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 userId:
+ *                   type: integer
+ *       400:
+ *         description: Bad request
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       403:
+ *         description: Forbidden - cannot update other user's profile
+ *       500:
+ *         description: Server error
+ */
 router.put("/:userId", verifyToken, async (req, res) => {
   const userId = parseInt(req.params.userId);
   const conn = await db.getConnection();

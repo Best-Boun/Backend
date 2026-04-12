@@ -42,6 +42,73 @@ function parseResumeData(dataJson) {
 }
 
 /* GET /api/resume/me - Get current user's resume */
+/**
+ * @swagger
+ * /api/resume/me:
+ *   get:
+ *     summary: ดึงข้อมูลเรซูเม่ของผู้ใช้ปัจจุบัน
+ *     description: Fetch the resume for the currently authenticated user
+ *     tags: [Resume]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Resume retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                       example: 1
+ *                     fullName:
+ *                       type: string
+ *                       example: "สมชาย ใจดี"
+ *                     jobTitle:
+ *                       type: string
+ *                       example: "Senior Frontend Developer"
+ *                     summary:
+ *                       type: string
+ *                     profileImage:
+ *                       type: string
+ *                     skills:
+ *                       type: array
+ *                       items:
+ *                         type: string
+ *                       example: ["React", "TypeScript"]
+ *                     experience:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     education:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     languages:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                     template:
+ *                       type: string
+ *                       enum: ["modern", "minimal", "bold", "forest", "dusk"]
+ *                     createdAt:
+ *                       type: string
+ *                       format: date-time
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Server error
+ */
 router.get("/me", verifyToken, async (req, res) => {
   try {
     const [rows] = await db.query(
@@ -77,6 +144,73 @@ router.get("/me", verifyToken, async (req, res) => {
 });
 
 /* POST /api/resume - Create or upsert resume */
+/**
+ * @swagger
+ * /api/resume:
+ *   post:
+ *     summary: สร้างเรซูเม่ใหม่
+ *     description: Create a new resume for the current user (upserts if one already exists)
+ *     tags: [Resume]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fullName
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *                 example: "สมชาย ใจดี"
+ *               jobTitle:
+ *                 type: string
+ *               summary:
+ *                 type: string
+ *               profileImage:
+ *                 type: string
+ *               skills:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               experience:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *               education:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *               languages:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *               template:
+ *                 type: string
+ *                 enum: ["modern", "minimal", "bold", "forest", "dusk"]
+ *     responses:
+ *       200:
+ *         description: Resume created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Bad request - fullName required
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       500:
+ *         description: Server error
+ */
 router.post("/", verifyToken, async (req, res) => {
   if (!req.body.fullName || !req.body.fullName.trim()) {
     return res.status(400).json({ 
@@ -123,7 +257,135 @@ router.post("/", verifyToken, async (req, res) => {
   }
 });
 
-/* PUT /api/resume/:id - Update existing resume */
+/**
+ * @swagger
+ * /api/resume/{id}:
+ *   put:
+ *     summary: อัปเดตเรซูเม่ตาม ID
+ *     tags: [Resume]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Resume ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - fullName
+ *             properties:
+ *               fullName:
+ *                 type: string
+ *                 example: "John Doe"
+ *               currentPosition:
+ *                 type: string
+ *                 example: "Senior Developer"
+ *               summary:
+ *                 type: string
+ *                 example: "Experienced software engineer..."
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "john@example.com"
+ *               phone:
+ *                 type: string
+ *                 example: "+66812345678"
+ *               location:
+ *                 type: string
+ *                 example: "Bangkok, Thailand"
+ *               experience:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     company:
+ *                       type: string
+ *                     position:
+ *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                     endDate:
+ *                       type: string
+ *               education:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     school:
+ *                       type: string
+ *                     degree:
+ *                       type: string
+ *                     field:
+ *                       type: string
+ *               skills:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               certifications:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               languages:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *               portfolio:
+ *                 type: string
+ *               template:
+ *                 type: string
+ *                 enum: [modern, classic, creative]
+ *     responses:
+ *       200:
+ *         description: Resume updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: "Resume updated"
+ *                 data:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: integer
+ *                     fullName:
+ *                       type: string
+ *                     currentPosition:
+ *                       type: string
+ *                     summary:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     phone:
+ *                       type: string
+ *                     location:
+ *                       type: string
+ *                     template:
+ *                       type: string
+ *                     updatedAt:
+ *                       type: string
+ *                       format: date-time
+ *       400:
+ *         description: Bad request - invalid ID or missing fullName
+ *       401:
+ *         description: Unauthorized - invalid or missing token
+ *       403:
+ *         description: Forbidden - cannot modify another user's resume
+ *       500:
+ *         description: Server error
+ */
 router.put("/:id", verifyToken, async (req, res) => {
   const { id } = req.params;
 
