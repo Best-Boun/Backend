@@ -53,7 +53,7 @@ async function fetchSubTables(userId) {
       const [rows] = await db.query(query, [userId]);
       results[table] = rows;
     } catch (err) {
-      console.log("fetch error:", table, err);
+      console.error(`Failed to fetch ${table}:`, err.message);
       results[table] = [];
     }
   }
@@ -227,8 +227,6 @@ async function insertSubTablesAsync(userId, body) {
   });
 
  certifications.forEach((cert) => {
-   console.log("CERT:", cert);
-
    inserts.push({
      table: "profile_certifications",
      row: {
@@ -261,9 +259,11 @@ projects.forEach((proj) => {
     try {
       await db.query(`INSERT INTO ${table} SET ?`, [row]);
     } catch (err) {
-      console.log("❌ INSERT ERROR:", table);
-      console.log("ROW:", row);
-      console.log("ERROR:", err);
+      console.error(`INSERT ERROR in ${table}:`, {
+        table,
+        row,
+        message: err.message
+      });
       throw err;
     }
   }
