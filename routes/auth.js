@@ -1,4 +1,5 @@
 const express = require("express");
+//  Express สร้าง APi
 const router = express.Router();
 const db = require("../db");
 const bcrypt = require("bcrypt");
