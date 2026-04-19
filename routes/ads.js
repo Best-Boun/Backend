@@ -221,7 +221,7 @@ module.exports = router;
  * @swagger
  * /api/ads:
  *   get:
- *     summary: ดึงโฆษณาทั้งหมด (admin เห็นทั้งหมด / user เห็นเฉพาะ active)
+ *     summary: ดึงโฆษณาทั้งหมด (admin )
  *     tags: [Ads]
  *     security:
  *       - bearerAuth: []
@@ -235,7 +235,10 @@ module.exports = router;
  * /api/ads/{id}:
  *   get:
  *     summary: ดึงโฆษณาตาม ID
- *     tags: [Ads]
+ *     tags:
+ *       - Ads
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
  *       - in: path
  *         name: id
