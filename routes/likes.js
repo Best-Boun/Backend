@@ -12,11 +12,12 @@ router.get("/bulk-status", verifyToken, async (req, res) => {
       return res.status(401).json({ message: "Invalid token" });
     }
 
+    // ดึง postId ที่ user กด like
     const [result] = await db.query(
       "SELECT postId FROM likes WHERE userId = ?",
       [userId],
     );
-
+      // โหลดสถานะ  like ที่  user กด
     const likedPosts = result.map((r) => r.postId);
 
     res.json({ likedPosts });
@@ -30,6 +31,7 @@ router.get("/bulk-status", verifyToken, async (req, res) => {
 router.get("/counts", async (req, res) => {
   try {
     const [result] = await db.query(
+      // นับจำนวน like ของทุกโพส
       "SELECT postId, COUNT(*) AS count FROM likes GROUP BY postId",
     );
 
@@ -56,6 +58,7 @@ router.get("/status/:postId", verifyToken, async (req, res) => {
     }
 
     const [result] = await db.query(
+      // เช็คว่า user กด like โพสต์นี้มั้ย
       "SELECT 1 FROM likes WHERE userId = ? AND postId = ?",
       [userId, postId],
     );
@@ -73,6 +76,7 @@ router.get("/:postId", async (req, res) => {
     const postId = req.params.postId;
 
     const [result] = await db.query(
+      // นับ like แค่ โพสเดียว
       "SELECT COUNT(*) AS count FROM likes WHERE postId = ?",
       [postId],
     );
@@ -100,6 +104,7 @@ router.post("/", verifyToken, async (req, res) => {
 
     // เช็คว่ามี like อยู่มั้ย
     const [existing] = await db.query(
+      // เช็คว่ามี like อยู่มั้ย
       "SELECT 1 FROM likes WHERE userId = ? AND postId = ?",
       [userId, postId],
     );
@@ -128,6 +133,7 @@ router.post("/", verifyToken, async (req, res) => {
       message: "Liked",
     });
   } catch (err) {
+    // กัน insert ซ้ำ
     if (err.code === "ER_DUP_ENTRY") {
       return res.json({
         liked: true,

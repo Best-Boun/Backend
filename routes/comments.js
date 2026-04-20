@@ -69,7 +69,7 @@ router.delete("/:id", verifyToken, async (req, res) => {
     const [result] = await db.query("SELECT * FROM comments WHERE id = ?", [
       commentId,
     ]);
-
+      // ถ้าหาไม่เจอ
     if (result.length === 0) {
       return res.status(404).json({ message: "Comment not found" });
     }
@@ -108,7 +108,7 @@ router.put("/:id", verifyToken, async (req, res) => {
     const [result] = await db.query("SELECT * FROM comments WHERE id = ?", [
       commentId,
     ]);
-
+    // ถ้าหาไม่เจอ
     if (result.length === 0) {
       return res.status(404).json({ message: "Comment not found" });
     }
@@ -121,10 +121,10 @@ router.put("/:id", verifyToken, async (req, res) => {
     }
 
     // update
-    await db.query(
-      "UPDATE comments SET text = ? WHERE id = ?",
-      [text, commentId]
-    );
+    await db.query("UPDATE comments SET text = ? WHERE id = ?", [
+      text,
+      commentId,
+    ]);
 
     res.json({ message: "Comment updated" });
   } catch (err) {

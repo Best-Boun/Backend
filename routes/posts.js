@@ -110,7 +110,7 @@ router.delete("/:id", verifyToken, async (req, res) => {
       return res.status(404).json({ message: "Post not found" });
     }
 
-    const post = result[0];
+    const post = result[0]; 
 
     // เช็คสิทธิ์
     if (post.userId !== userId && role !== "admin") {

@@ -197,7 +197,7 @@ router.post("/login", async (req, res) => {
         message: "Invalid email or password",
       });
     }
-
+        // create Token           ข้อมูล ที่ใส่ไว้  encoded
     const token = jwt.sign({ id: user.id, role: user.role }, "mysecretkey", {
       expiresIn: "1d",
     });
