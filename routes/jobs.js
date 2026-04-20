@@ -347,7 +347,13 @@ router.get("/:id", async (req, res) => {
 
     // 🔥 ดึง skills
     const [skillRows] = await db.query(
-      `SELECT js.jobId, js.skillId, js.requiredLevel, s.name AS skill
+      `SELECT 
+  js.jobId, 
+  js.skillId, 
+  js.requiredLevel,
+  js.weight,
+  js.required,
+  s.name AS skill
        FROM job_skills js
        JOIN skills s ON js.skillId = s.id
        WHERE js.jobId = ?`,
