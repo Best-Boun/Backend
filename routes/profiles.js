@@ -497,83 +497,374 @@ router.get("/search", async (req, res) => {
  *         description: Server error
  */
 router.get("/", async (req, res) => {
-  const userId = parseInt(req.query.userId);
+  try {
+    const { userId: userIdStr } = req.query;
 
-  if (!userId) {
-    return res.status(400).json({ error: "userId is required" });
+    if (!userIdStr) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const userId = Number(userIdStr);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: "Invalid userId" });
+    }
+
+    const [result] = await db.query(
+      `SELECT 
+        p.*, 
+        u.profileImage AS userProfileImage,
+        u.name AS userName
+       FROM profiles p
+       LEFT JOIN users u ON p.userId = u.id
+       WHERE p.userId = ?`,
+      [userId],
+    );
+
+    if (result.length === 0) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    const profile = result[0];
+    const subs = await fetchSubTables(userId);
+
+    return res.json(buildProfileObject(profile, subs, null));
+  } catch (err) {
+    console.error("GET PROFILE ERROR:", err);
+    res.status(500).json({ error: "Server error" });
   }
-
- const [result] = await db.query(
-   `SELECT 
-    p.*, 
-    u.profileImage AS userProfileImage,
-    u.name AS userName
-   FROM profiles p
-   LEFT JOIN users u ON p.userId = u.id
-   WHERE p.userId = ?`,
-   [userId],
- );
-
-if (result.length === 0) {
-  const [userRows] = await db.query(
-    "SELECT profileImage, name FROM users WHERE id = ?",
-    [userId],
-  );
-
-  if (!userRows.length) {
-    return res.json({ profileImage: null, name: null });
-  }
-
-  return res.json({
-    userId: userId, // ⭐ ใส่อันนี้เข้าไป
-    profileImage: userRows[0].profileImage,
-    name: userRows[0].name,
-  });
-}
-
-const profile = result[0];
-
-const subs = await fetchSubTables(userId);
-
-return res.json(buildProfileObject(profile, subs, null));
 });
 
 // ================================================
 // POST /api/profiles
 // ================================================
+/**
+ * @swagger
+ * /api/profiles:
+ *   post:
+ *     summary: สร้างโปรไฟล์ใหม่
+ *     description: Create a new user profile with personal information, skills, experience, education, etc. Requires authentication.
+ *     tags: [Profiles]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *             properties:
+ *               userId:
+ *                 type: integer
+ *                 example: 42
+ *                 description: User ID (must match authenticated user)
+ *               name:
+ *                 type: string
+ *                 example: "สมชาย ใจดี"
+ *                 description: Full name
+ *               title:
+ *                 type: string
+ *                 example: "Senior Frontend Developer"
+ *                 description: Job title
+ *               bio:
+ *                 type: string
+ *                 example: "Passionate about web development"
+ *                 description: Short bio
+ *               summary:
+ *                 type: string
+ *                 example: "10+ years of experience in full stack development"
+ *                 description: Detailed professional summary
+ *               phone:
+ *                 type: string
+ *                 example: "+66812345678"
+ *               location:
+ *                 type: string
+ *                 example: "Bangkok, Thailand"
+ *               website:
+ *                 type: string
+ *                 example: "https://portfolio.example.com"
+ *               profileImage:
+ *                 type: string
+ *                 example: "https://avatars.example.com/user.jpg"
+ *               availability:
+ *                 type: string
+ *                 enum: ["immediately", "2weeks", "4weeks"]
+ *                 example: "immediately"
+ *               salaryRange:
+ *                 type: string
+ *                 example: "60000-80000"
+ *               gender:
+ *                 type: string
+ *                 enum: ["male", "female", "other"]
+ *               nationality:
+ *                 type: string
+ *                 example: "Thai"
+ *               dateOfBirth:
+ *                 type: string
+ *                 format: date
+ *                 example: "1990-01-15"
+ *               openToWork:
+ *                 type: boolean
+ *                 example: true
+ *               email:
+ *                 type: string
+ *                 format: email
+ *                 example: "user@example.com"
+ *               linkedin:
+ *                 type: string
+ *                 example: "https://linkedin.com/in/user"
+ *               github:
+ *                 type: string
+ *                 example: "https://github.com/user"
+ *               privacy:
+ *                 type: object
+ *                 properties:
+ *                   phone:
+ *                     type: boolean
+ *                   email:
+ *                     type: boolean
+ *                   dateOfBirth:
+ *                     type: boolean
+ *                   salary:
+ *                     type: boolean
+ *               style:
+ *                 type: object
+ *                 description: Profile styling preferences
+ *                 properties:
+ *                   themeIdx:
+ *                     type: integer
+ *                     minimum: 0
+ *                     maximum: 7
+ *                     example: 0
+ *                   accent:
+ *                     type: string
+ *                     example: "#0066cc"
+ *                   fontId:
+ *                     type: string
+ *                     enum: ["geist", "lora", "mono", "fraunces", "syne"]
+ *                     example: "geist"
+ *                   cover:
+ *                     type: string
+ *                     example: "https://example.com/cover.jpg"
+ *                   coverBlur:
+ *                     type: integer
+ *                     minimum: 0
+ *                     maximum: 16
+ *                     example: 0
+ *                   showCover:
+ *                     type: boolean
+ *                     example: true
+ *                   fontSize:
+ *                     type: integer
+ *                     minimum: 12
+ *                     maximum: 20
+ *                     example: 16
+ *                   lineSpacing:
+ *                     type: integer
+ *                     minimum: 16
+ *                     maximum: 48
+ *                     example: 24
+ *                   cardRadius:
+ *                     type: integer
+ *                     minimum: 0
+ *                     maximum: 32
+ *                     example: 8
+ *               skills:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 example: ["JavaScript", "React", "Node.js"]
+ *                 description: Array of skill names
+ *               experience:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     title:
+ *                       type: string
+ *                     company:
+ *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                       format: date
+ *                     endDate:
+ *                       type: string
+ *                       format: date
+ *                     description:
+ *                       type: string
+ *               education:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     school:
+ *                       type: string
+ *                     degree:
+ *                       type: string
+ *                     field:
+ *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                       format: date
+ *                     endDate:
+ *                       type: string
+ *                       format: date
+ *               languages:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     language:
+ *                       type: string
+ *                     proficiency:
+ *                       type: string
+ *                       enum: ["elementary", "limited", "professional", "fluent", "native"]
+ *               certifications:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     name:
+ *                       type: string
+ *                     issuer:
+ *                       type: string
+ *                     issueDate:
+ *                       type: string
+ *                       format: date
+ *                     expirationDate:
+ *                       type: string
+ *                       format: date
+ *               projects:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     title:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     link:
+ *                       type: string
+ *                     startDate:
+ *                       type: string
+ *                       format: date
+ *                     endDate:
+ *                       type: string
+ *                       format: date
+ *     responses:
+ *       201:
+ *         description: Profile created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 userId:
+ *                   type: integer
+ *                   example: 42
+ *       400:
+ *         description: Bad request - missing required fields
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "userId is required"
+ *       401:
+ *         description: Unauthorized - missing or invalid token
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "No token provided"
+ *       403:
+ *         description: Forbidden - userId doesn't match authenticated user
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Forbidden"
+ *       500:
+ *         description: Internal server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Insert failed"
+ */
 router.post("/", verifyToken, async (req, res) => {
   try {
-    const { userId } = req.body;
+    const userId = req.user.id;
+    const { name, title, style } = req.body;
 
-    if (parseInt(userId) !== req.user.id) {
-      return res.status(403).json({ error: "Forbidden" });
+    // Validate required fields
+    if (!name || !title) {
+      return res.status(400).json({ error: "Missing required fields" });
     }
 
-    const mainRow = { userId };
+    // Prepare insert data
+    const profileData = {
+      userId,
+      name,
+      title,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
 
-    PROFILE_FIELDS.forEach((f) => {
-      if (req.body[f] !== undefined) {
-        mainRow[f] =
-          (f === "privacy" || f === "style") && typeof req.body[f] === "object"
-            ? JSON.stringify(req.body[f])
-            : req.body[f];
-      }
-    });
+    // Add optional fields
+    if (req.body.phone) profileData.phone = req.body.phone;
+    if (req.body.bio) profileData.bio = req.body.bio;
+    if (req.body.summary) profileData.summary = req.body.summary;
+    if (req.body.location) profileData.location = req.body.location;
+    if (req.body.website) profileData.website = req.body.website;
+    if (req.body.profileImage) profileData.profileImage = req.body.profileImage;
+    if (req.body.availability) profileData.availability = req.body.availability;
+    if (req.body.salaryRange) profileData.salaryRange = req.body.salaryRange;
+    if (req.body.gender) profileData.gender = req.body.gender;
+    if (req.body.nationality) profileData.nationality = req.body.nationality;
+    if (req.body.dateOfBirth) profileData.dateOfBirth = req.body.dateOfBirth;
+    if (req.body.openToWork !== undefined) profileData.openToWork = req.body.openToWork;
+    if (req.body.email) profileData.email = req.body.email;
+    if (req.body.linkedin) profileData.linkedin = req.body.linkedin;
+    if (req.body.github) profileData.github = req.body.github;
+    if (req.body.privacy) {
+      profileData.privacy = typeof req.body.privacy === "object" ? JSON.stringify(req.body.privacy) : req.body.privacy;
+    }
+    if (style) {
+      profileData.style = typeof style === "object" ? JSON.stringify(style) : style;
+    }
 
-    mainRow.createdAt = new Date();
-    mainRow.updatedAt = new Date();
+    // Insert profile
+    await db.query("INSERT INTO profiles SET ?", [profileData]);
 
-    await db.query("INSERT INTO profiles SET ?", [mainRow]);
-
+    // Insert skills and sub-tables
     await upsertSkillsAsync(userId, req.body.skills || []);
+    await insertSubTablesAsync(userId, { ...req.body, skills: [] });
 
-    await insertSubTablesAsync(userId, {
-      ...req.body,
-      skills: [],
-    });
+    res.status(201).json({ success: true, userId });
 
-    res.json({ success: true, userId });
   } catch (err) {
+    // Handle duplicate profile
+    if (err.code === "ER_DUP_ENTRY") {
+      return res.status(400).json({ error: "Profile already exists" });
+    }
+
     console.error("CREATE PROFILE ERROR:", err);
     res.status(500).json({ error: "Insert failed" });
   }
@@ -704,50 +995,88 @@ router.post("/", verifyToken, async (req, res) => {
  *         description: Server error
  */
 router.put("/:userId", verifyToken, async (req, res) => {
-  const userId = parseInt(req.params.userId);
-  const conn = await db.getConnection();
-
+  let conn;
   try {
+    const { userId: userIdStr } = req.params;
+
+    if (!userIdStr) {
+      return res.status(400).json({ error: "userId is required" });
+    }
+
+    const userId = Number(userIdStr);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ error: "Invalid userId" });
+    }
+
+    if (userId !== req.user.id) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    conn = await db.getConnection();
     await conn.beginTransaction();
 
+    // Check if profile exists
+    const [existingProfile] = await conn.query(
+      "SELECT id FROM profiles WHERE userId = ?",
+      [userId]
+    );
+
+    if (existingProfile.length === 0) {
+      return res.status(404).json({ error: "Profile not found" });
+    }
+
+    // Prepare updates
     const updates = {};
-    PROFILE_FIELDS.forEach((f) => {
-      if (req.body[f] !== undefined) {
-        updates[f] = (f === "privacy" || f === "style") && typeof req.body[f] === "object"
-          ? JSON.stringify(req.body[f])
-          : req.body[f];
+    PROFILE_FIELDS.forEach((field) => {
+      if (req.body[field] !== undefined) {
+        updates[field] =
+          (field === "privacy" || field === "style") && typeof req.body[field] === "object"
+            ? JSON.stringify(req.body[field])
+            : req.body[field];
       }
     });
     updates.updatedAt = new Date();
 
-    const [rows] = await conn.query("SELECT id FROM profiles WHERE userId = ?", [userId]);
+    // Update profile
+    await conn.query("UPDATE profiles SET ? WHERE userId = ?", [updates, userId]);
 
-    if (rows.length === 0) {
-      await conn.query("INSERT INTO profiles SET ?", [{ userId, ...updates, createdAt: new Date() }]);
-    } else {
-      await conn.query("UPDATE profiles SET ? WHERE userId = ?", [updates, userId]);
-    }
-
+    // Update profile image in users table
     if (updates.profileImage) {
-      await conn.query("UPDATE users SET profileImage = ? WHERE id = ?", [updates.profileImage, userId]);
+      await conn.query("UPDATE users SET profileImage = ? WHERE id = ?", [
+        updates.profileImage,
+        userId,
+      ]);
     }
 
+    // Delete old sub-table entries
     for (const table of SUB_TABLES) {
       await conn.query(`DELETE FROM ${table} WHERE userId = ?`, [userId]);
     }
 
+    // Insert new skills
     await upsertSkillsWithConn(conn, userId, req.body.skills || []);
+
+    // Insert new sub-tables
     await insertSubTablesWithConn(conn, userId, { ...req.body, skills: [] });
 
     await conn.commit();
     res.json({ success: true, userId });
 
   } catch (err) {
-    await conn.rollback();
+    if (conn) {
+      try {
+        await conn.rollback();
+      } catch (rollbackErr) {
+        console.error("ROLLBACK ERROR:", rollbackErr);
+      }
+    }
     console.error("UPDATE PROFILE ERROR:", err);
     res.status(500).json({ error: "Update failed" });
   } finally {
-    conn.release();
+    if (conn) {
+      conn.release();
+    }
   }
 });
     
@@ -760,89 +1089,4 @@ module.exports = router;
  *   description: จัดการข้อมูล Profile
  */
 
-/**
- * @swagger
- * /api/profiles:
- *   get:
- *     summary: ดึง Profile ตาม userId
- *     tags: [Profiles]
- *     parameters:
- *       - in: query
- *         name: userId
- *         required: true
- *         schema:
- *           type: integer
- *         example: 1
- *     responses:
- *       200:
- *         description: สำเร็จ
- *       400:
- *         description: ไม่ได้ส่ง userId
- *   post:
- *     summary: สร้าง Profile ใหม่
- *     tags: [Profiles]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [userId]
- *             properties:
- *               userId:
- *                 type: integer
- *               name:
- *                 type: string
- *               title:
- *                 type: string
- *               bio:
- *                 type: string
- *               skills:
- *                 type: array
- *                 items:
- *                   type: string
- *               experience:
- *                 type: array
- *               education:
- *                 type: array
- *     responses:
- *       200:
- *         description: สร้างสำเร็จ
- */
 
-/**
- * @swagger
- * /api/profiles/{userId}:
- *   put:
- *     summary: อัปเดต Profile
- *     tags: [Profiles]
- *     parameters:
- *       - in: path
- *         name: userId
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *               title:
- *                 type: string
- *               bio:
- *                 type: string
- *               phone:
- *                 type: string
- *               location:
- *                 type: string
- *               skills:
- *                 type: array
- *                 items:
- *                   type: string
- *     responses:
- *       200:
- *         description: อัปเดตสำเร็จ
- */
