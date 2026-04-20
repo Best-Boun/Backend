@@ -12,6 +12,15 @@ const SUB_TABLES = [
   "profile_projects",
 ];
 
+/* ── Helper: แปลง ISO date string → YYYY-MM-DD สำหรับ MySQL DATE column ── */
+function toMySQLDate(val) {
+  if (!val) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
 const PROFILE_FIELDS = [
   "name",
   "title",
@@ -191,8 +200,8 @@ async function insertSubTablesAsync(userId, body) {
         userId,
         company: exp.company || null,
         role: exp.role || exp.title || null,
-        startDate: exp.startDate || null,
-        endDate: exp.endDate || null,
+        startDate: toMySQLDate(exp.startDate),
+        endDate: toMySQLDate(exp.endDate),
         description: exp.description || null,
       },
     });
@@ -207,8 +216,8 @@ async function insertSubTablesAsync(userId, body) {
         institution: edu.institution || edu.school || null,
         degree: edu.degree || null,
         field: edu.field || null,
-        startDate: edu.startDate || null,
-        endDate: edu.endDate || null,
+        startDate: toMySQLDate(edu.startDate),
+        endDate: toMySQLDate(edu.endDate),
         grade: edu.grade || null,
       },
     });
@@ -233,8 +242,8 @@ async function insertSubTablesAsync(userId, body) {
        userId,
        name: cert.name || "",
        issuer: cert.issuer || "",
-       date: cert.issueDate || cert.date || null,
-       expiryDate: cert.expiryDate || null,
+       date: toMySQLDate(cert.issueDate || cert.date),
+       expiryDate: toMySQLDate(cert.expiryDate),
        url: cert.url || null,
      },
    });
@@ -343,8 +352,8 @@ async function insertSubTablesWithConn(conn, userId, body) {
     await conn.query("INSERT INTO profile_experience SET ?", [{
       userId, company: exp.company || null,
       role: exp.role || exp.title || null,
-      startDate: exp.startDate || null,
-      endDate: exp.endDate || null,
+      startDate: toMySQLDate(exp.startDate),
+      endDate: toMySQLDate(exp.endDate),
       description: exp.description || null,
     }]);
   }
@@ -352,7 +361,7 @@ async function insertSubTablesWithConn(conn, userId, body) {
     await conn.query("INSERT INTO profile_education SET ?", [{
       userId, institution: edu.institution || edu.school || null,
       degree: edu.degree || null, field: edu.field || null,
-      startDate: edu.startDate || null, endDate: edu.endDate || null,
+      startDate: toMySQLDate(edu.startDate), endDate: toMySQLDate(edu.endDate),
       grade: edu.grade || null,
     }]);
   }
@@ -364,8 +373,8 @@ async function insertSubTablesWithConn(conn, userId, body) {
   for (const cert of certifications) {
     await conn.query("INSERT INTO profile_certifications SET ?", [{
       userId, name: cert.name || "", issuer: cert.issuer || "",
-      date: cert.issueDate || cert.date || null,
-      expiryDate: cert.expiryDate || null, url: cert.url || null,
+      date: toMySQLDate(cert.issueDate || cert.date),
+      expiryDate: toMySQLDate(cert.expiryDate), url: cert.url || null,
     }]);
   }
   for (const proj of projects) {
@@ -838,7 +847,7 @@ router.post("/", verifyToken, async (req, res) => {
     if (req.body.salaryRange) profileData.salaryRange = req.body.salaryRange;
     if (req.body.gender) profileData.gender = req.body.gender;
     if (req.body.nationality) profileData.nationality = req.body.nationality;
-    if (req.body.dateOfBirth) profileData.dateOfBirth = req.body.dateOfBirth;
+    if (req.body.dateOfBirth) profileData.dateOfBirth = toMySQLDate(req.body.dateOfBirth);
     if (req.body.openToWork !== undefined) profileData.openToWork = req.body.openToWork;
     if (req.body.email) profileData.email = req.body.email;
     if (req.body.linkedin) profileData.linkedin = req.body.linkedin;
