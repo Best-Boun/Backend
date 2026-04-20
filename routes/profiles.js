@@ -1022,9 +1022,13 @@ router.put("/:userId", verifyToken, async (req, res) => {
       [userId]
     );
 
-    if (existingProfile.length === 0) {
-      return res.status(404).json({ error: "Profile not found" });
-    }
+   if (existingProfile.length === 0) {
+     // 🔥 ไม่มี → create แทน
+     await conn.query(
+       "INSERT INTO profiles (userId, name, createdAt, updatedAt) VALUES (?, ?, NOW(), NOW())",
+       [userId, req.body.name || ""],
+     );
+   }
 
     // Prepare updates
     const updates = {};
