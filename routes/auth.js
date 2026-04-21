@@ -57,7 +57,7 @@ router.post("/register", async (req, res) => {
         .json({ message: "role must be 'seeker' or 'employer'" });
     }
 
-    // 🔥 ใช้ await แบบเดียวกับ login
+    //  ใช้ await แบบเดียวกับ login
     const [result] = await db.query("SELECT * FROM users WHERE email = ?", [
       email,
     ]);
@@ -163,7 +163,7 @@ router.post("/login", async (req, res) => {
     const { email, password } = req.body;
 
     const sql = "SELECT * FROM users WHERE email = ?";
-    const [result] = await db.query(sql, [email]); // ✅ FIX ตรงนี้
+    const [result] = await db.query(sql, [email]); //  FIX ตรงนี้
 
     console.log("RESULT:", result);
 
